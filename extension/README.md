@@ -22,21 +22,35 @@ as a new card. Manifest V3, no dependencies, Chrome-first (Firefox-compatible).
 
 ## Use
 
-- **Select text → right-click → Add to Danki** — popup opens prefilled.
-- **Or**: select text → click the toolbar icon — the popup pulls the live
-  tab selection itself.
-- Back side auto-fills via the free MyMemory API (editable, works offline as
-  manual entry if rate-limited). `⌘/Ctrl+Enter` saves, popup stays open for
-  the next word.
+**Floating bubble (fastest):** select any word → a 団 icon pops next to the
+selection → click it → inline editor opens right there: front prefilled, back
+auto-translated, destination list grouped by category (`Français / Verbes`),
+optional ⇄ reversed → **Save card**. `Esc` or click-away dismisses.
+
+**Fallbacks:** select → right-click → *Add to Danki*, or click the toolbar
+icon (it pulls the live tab selection itself).
+
+Back side auto-fills via the free MyMemory API (editable, works offline as
+manual entry if rate-limited). `⌘/Ctrl+Enter` saves, popup stays open for
+the next word.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `manifest.json` | MV3 manifest (contextMenus, storage, activeTab, scripting) |
-| `background.js` | Context-menu entry, stashes selection, opens popup |
-| `popup.html/js` | Front/back/list/reversed form, translate, save |
+| `manifest.json` | MV3 manifest (contextMenus, storage, activeTab, scripting, content script) |
+| `content.js` | Floating bubble + inline editor (shadow DOM, style-isolated) |
+| `background.js` | Context-menu entry, stash selection, network proxy, opens options |
+| `popup.html/js` | Toolbar-popup form, translate, save |
 | `options.html/js` | URL, token, languages, default list, connection test |
+
+## Notes
+
+- Chrome shows an *"read and change all your data"* warning on install —
+  that's the content script needed for the floating bubble (standard for
+  clippers). It only reads the text you select.
+- All editor network traffic is proxied through the service worker, so
+  strict sites (GitHub, X, banks with `connect-src` CSPs) can't block saves.
 
 ## Privacy
 

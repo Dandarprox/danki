@@ -20,3 +20,23 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
     await chrome.action.setBadgeText({ text: "•" });
   }
 });
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type === "openOptions") {
+    chrome.runtime.openOptionsPage();
+    return;
+  }
+  // Network proxy for the content script: page CSP (connect-src) can't
+  // block the service worker, so all API/translate traffic goes through here.
+  if (msg?.type === "fetch") {
+    (async () => {
+      try {
+        const r = await fetch(msg.url, msg.init);
+        reply({ ok: r.ok, status: r.status, text: await r.text() });
+      } catch (e) {
+        reply({ error: String((e && e.message) || e) });
+      }
+    })();
+    return true;
+  }
+});
