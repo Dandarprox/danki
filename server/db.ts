@@ -43,6 +43,18 @@ CREATE INDEX IF NOT EXISTS idx_cards_deck_due ON cards(deck_id, due);
 CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at);
 `);
 
+// Migration: remember full pre-grade state so a grade can be corrected later.
+{
+  const cols = db.query("PRAGMA table_info(reviews)").all() as { name: string }[];
+  const has = (n: string) => cols.some((c) => c.name === n);
+  if (!has("prev_ease"))
+    db.exec("ALTER TABLE reviews ADD COLUMN prev_ease REAL NOT NULL DEFAULT 2.5");
+  if (!has("prev_reps"))
+    db.exec("ALTER TABLE reviews ADD COLUMN prev_reps INTEGER NOT NULL DEFAULT 0");
+  if (!has("prev_lapses"))
+    db.exec("ALTER TABLE reviews ADD COLUMN prev_lapses INTEGER NOT NULL DEFAULT 0");
+}
+
 export const uid = () =>
   Bun.randomUUIDv7 ? Bun.randomUUIDv7() : Math.random().toString(36).slice(2);
 

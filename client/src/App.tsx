@@ -20,9 +20,10 @@ function useTheme() {
   return { dark, toggle };
 }
 
+const GRADE_NAMES: Record<number, string> = { 1: "Again", 3: "Hard", 4: "Good", 5: "Easy" };
+
 // client-side mirror of server SM-2 previews
-function previews(c: StudyItem) {
-  const { ease, interval_days, reps } = c;
+function previews(c: StudyItem) {  const { ease, interval_days, reps } = c;
   const good =
     reps === 0 ? 1 : reps === 1 ? 6 : Math.max(1, Math.round(interval_days * ease));
   const hard = reps === 0 ? 1 : Math.max(1, Math.floor(interval_days * 1.2));
@@ -141,7 +142,7 @@ export default function App() {
       )}
 
       <footer className="max-w-3xl mx-auto px-5 pb-8 text-center text-xs text-stone-400 dark:text-stone-500">
-        danki · spaced repetition, minus the clutter · study: <Kbd>Space</Kbd> flip · <Kbd>1–4</Kbd> grade · <Kbd>E</Kbd> instant Easy · add cards: <Kbd>Enter</Kbd> save
+        danki · spaced repetition, minus the clutter · study: <Kbd>Space</Kbd> flip · <Kbd>1–4</Kbd> grade · <Kbd>E</Kbd> instant Easy · <Kbd>←</Kbd><Kbd>→</Kbd> revisit & correct · add cards: <Kbd>Enter</Kbd> save
       </footer>
     </div>
   );
@@ -544,7 +545,10 @@ function Study({ deckId, onDone, onError }: {
   };
 
   const cur = queue[idx];
-  const pv = useMemo(() => (cur ? previews(cur) : null), [cur]);
+  const [history, setHistory] = useState<{ item: StudyItem; grade: number }[]>([]);
+  const [viewing, setViewing] = useState<number | null>(null); // history index under correction, null = live card
+  const shown = viewing != null ? history[viewing].item : cur;
+  const pv = useMemo(() => (shown ? previews(shown) : null), [shown]);
   const busyRef = useRef(false);
 
   const grade = async (g: number) => {
@@ -552,6 +556,7 @@ function Study({ deckId, onDone, onError }: {
     busyRef.current = true;
     try {
       await api.review(cur.id, cur.side, g);
+      setHistory((h) => [...h, { item: cur, grade: g }]);
     } catch (e: any) {
       onError(e.message);
     }
@@ -564,16 +569,55 @@ function Study({ deckId, onDone, onError }: {
     }, 120);
   };
 
-  // keyboard: space flip, 1-4 grade, E = instant Easy (no reveal needed)
+  const goBack = () => {
+    if (history.length === 0) return;
+    setViewing((v) => (v == null ? history.length - 1 : Math.max(0, v - 1)));
+    setShow(true);
+  };
+  const goForward = () => {
+    if (viewing == null) return;
+    if (viewing >= history.length - 1) {
+      setViewing(null);
+      setShow(false);
+    } else setViewing(viewing + 1);
+  };
+  const correct = async (g: number) => {
+    if (viewing == null || busyRef.current) return;
+    const h = history[viewing];
+    busyRef.current = true;
+    try {
+      await api.regrade(h.item.id, h.item.side, g);
+      setHistory((prev) => prev.map((x, i) => (i === viewing ? { ...x, grade: g } : x)));
+      onError(`Corrected to ${GRADE_NAMES[g]} ✓`);
+    } catch (e: any) {
+      onError(e.message);
+    } finally {
+      busyRef.current = false;
+    }
+    setViewing(null);
+    setShow(false);
+  };
+
+  // keyboard: space flip, 1-4 grade, E = instant Easy,
+  // ArrowLeft/Right = step through graded cards to correct them
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (!cur) return;
+      if (!cur && viewing == null) return;
       if (e.code === "Space") { e.preventDefault(); setShow((s) => !s); }
-      if (!show && (e.key === "e" || e.key === "E")) { grade(5); return; }
-      if (show && e.key === "1") grade(1);
-      if (show && e.key === "2") grade(3);
-      if (show && e.key === "3") grade(4);
-      if (show && e.key === "4") grade(5);
+      if (e.key === "ArrowLeft") { e.preventDefault(); goBack(); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); goForward(); return; }
+      if (e.key === "e" || e.key === "E") {
+        if (viewing != null) correct(5);
+        else if (!show) grade(5);
+        return;
+      }
+      const pick = viewing != null ? correct : grade;
+      if (show || viewing != null) {
+        if (e.key === "1") pick(1);
+        if (e.key === "2") pick(3);
+        if (e.key === "3") pick(4);
+        if (e.key === "4") pick(5);
+      }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -655,10 +699,12 @@ function Study({ deckId, onDone, onError }: {
       <div className="flex items-center justify-between text-sm text-stone-500">
         <button onClick={onDone} className="hover:text-stone-900 dark:hover:text-white px-2 py-1 rounded-lg" aria-label="End session">✕ End</button>
         <span className="flex items-center gap-2">
-          <span className="font-semibold">{done + 1} / {queue.length}</span>
-          <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-white/10 text-xs font-semibold">{cur.deck_name}</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${cur.side === "reverse" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : "bg-stone-100 text-stone-500 dark:bg-white/10"}`}>
-            {cur.side === "reverse" ? "⇄ Reverse" : "→ Forward"}
+          <span className="font-semibold">
+            {viewing != null ? `Reviewing ${viewing + 1}/${history.length}` : `${done + 1} / ${queue.length}`}
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-white/10 text-xs font-semibold">{shown.deck_name}</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${shown.side === "reverse" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : "bg-stone-100 text-stone-500 dark:bg-white/10"}`}>
+            {shown.side === "reverse" ? "⇄ Reverse" : "→ Forward"}
           </span>
         </span>
       </div>
@@ -668,8 +714,33 @@ function Study({ deckId, onDone, onError }: {
           style={{ width: `${pct}%` }}
         />
       </div>
+      <div className="mt-2 flex items-center justify-between text-xs text-stone-500">
+        <button
+          onClick={goBack}
+          disabled={history.length === 0 || viewing === 0}
+          className="px-3 py-1.5 rounded-lg font-semibold hover:bg-stone-100 dark:hover:bg-white/10 disabled:opacity-30"
+          title="Go back to a graded card to correct it"
+        >
+          ← Prev
+        </button>
+        <span className="font-medium">
+          {viewing != null ? (
+            <>You said <b>{GRADE_NAMES[history[viewing].grade]}</b> — pick to correct</>
+          ) : (
+            <>← → to revisit graded cards</>
+          )}
+        </span>
+        <button
+          onClick={goForward}
+          disabled={viewing == null}
+          className="px-3 py-1.5 rounded-lg font-semibold hover:bg-stone-100 dark:hover:bg-white/10 disabled:opacity-30"
+          title="Forward to the live card"
+        >
+          Next →
+        </button>
+      </div>
 
-      <div className="[perspective:1200px] mt-6">
+      <div className="[perspective:1200px] mt-4">
         <button
           onClick={() => setShow((s) => !s)}
           className={`flip-inner relative w-full min-h-[320px] rounded-3xl ${show ? "flipped" : ""}`}
@@ -677,20 +748,20 @@ function Study({ deckId, onDone, onError }: {
           <div className="flip-face card-paper absolute inset-0 rounded-3xl p-8 grid place-items-center">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-stone-400 font-semibold">Question</p>
-              <p className="text-4xl font-extrabold tracking-tight mt-3 whitespace-pre-wrap">{cur.q}</p>
+              <p className="text-4xl font-extrabold tracking-tight mt-3 whitespace-pre-wrap">{shown.q}</p>
               <p className="text-sm text-stone-400 mt-4">Tap or press Space to reveal</p>
             </div>
           </div>
           <div className="flip-face flip-back card-paper absolute inset-0 rounded-3xl p-8 grid place-items-center border-t-4 !border-t-emerald-400">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-stone-400 font-semibold">Answer</p>
-              <p className="text-3xl font-bold mt-3 whitespace-pre-wrap">{cur.a}</p>
+              <p className="text-3xl font-bold mt-3 whitespace-pre-wrap">{shown.a}</p>
             </div>
           </div>
         </button>
       </div>
 
-      {!show ? (
+      {!show && viewing == null ? (
         <div>
           <button
             onClick={() => setShow(true)}
@@ -707,11 +778,18 @@ function Study({ deckId, onDone, onError }: {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-4 gap-2 mt-4">
-          <GradeBtn label="Again" sub={pv!.again} kbd="1" cls="btn-grade-again" onClick={() => grade(1)} />
-          <GradeBtn label="Hard" sub={pv!.hard} kbd="2" cls="btn-grade-hard" onClick={() => grade(3)} />
-          <GradeBtn label="Good" sub={pv!.good} kbd="3" cls="btn-grade-good" onClick={() => grade(4)} />
-          <GradeBtn label="Easy" sub={pv!.easy} kbd="4" cls="btn-grade-easy" onClick={() => grade(5)} />
+        <div>
+          {viewing != null && (
+            <p className="text-center text-xs font-semibold text-amber-700 dark:text-amber-300 mt-4 mb-2">
+              Correction mode — this overwrites your {GRADE_NAMES[history[viewing].grade]} grade
+            </p>
+          )}
+          <div className="grid grid-cols-4 gap-2 mt-4">
+            <GradeBtn label="Again" sub={pv!.again} kbd="1" cls="btn-grade-again" onClick={() => (viewing != null ? correct(1) : grade(1))} />
+            <GradeBtn label="Hard" sub={pv!.hard} kbd="2" cls="btn-grade-hard" onClick={() => (viewing != null ? correct(3) : grade(3))} />
+            <GradeBtn label="Good" sub={pv!.good} kbd="3" cls="btn-grade-good" onClick={() => (viewing != null ? correct(4) : grade(4))} />
+            <GradeBtn label="Easy" sub={pv!.easy} kbd="4" cls="btn-grade-easy" onClick={() => (viewing != null ? correct(5) : grade(5))} />
+          </div>
         </div>
       )}
     </div>

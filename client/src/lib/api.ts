@@ -42,4 +42,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ cardId, side, grade }),
     }),
+  regrade: (cardId: string, side: string, grade: number) =>
+    req<{ ok: true; due: number; nextIntervalDays: number }>(`/api/study/regrade`, {
+      method: "POST",
+      body: JSON.stringify({ cardId, side, grade }),
+    }),
 };

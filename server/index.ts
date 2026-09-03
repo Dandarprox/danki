@@ -166,8 +166,40 @@ const server = Bun.serve({
         "UPDATE cards SET ease=?, interval_days=?, reps=?, lapses=?, due=? WHERE id=?"
       ).run(r.ease, r.interval_days, r.reps, r.lapses, due, cardId);
       db.query(
-        "INSERT INTO reviews(id,card_id,side,grade,prev_interval,next_interval,created_at) VALUES(?,?,?,?,?,?,?)"
-      ).run(uid(), cardId, side ?? "forward", grade, card.interval_days, r.nextIntervalDays, nowSec());
+        "INSERT INTO reviews(id,card_id,side,grade,prev_interval,prev_ease,prev_reps,prev_lapses,next_interval,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)"
+      ).run(uid(), cardId, side ?? "forward", grade, card.interval_days, card.ease, card.reps, card.lapses, r.nextIntervalDays, nowSec());
+      return json({ ok: true, due, nextIntervalDays: r.nextIntervalDays });
+    }
+
+    if (pathname === "/api/study/regrade" && req.method === "POST") {
+      // Correct the latest grade for a card side: recompute SM-2 from the
+      // pre-grade snapshot (no compounding) and fix the review row in place.
+      const { cardId, side, grade } = await body<{
+        cardId: string; side: string; grade: Grade;
+      }>(req);
+      if (![1, 3, 4, 5].includes(grade)) return json({ error: "Bad grade" }, 400);
+      const last = db
+        .query(
+          "SELECT * FROM reviews WHERE card_id=? AND side=? ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        )
+        .get(cardId, side ?? "forward") as any;
+      if (!last) return json({ error: "No review to correct" }, 404);
+      const base = {
+        ease: last.prev_ease ?? 2.5,
+        interval_days: last.prev_interval ?? 0,
+        reps: last.prev_reps ?? 0,
+        lapses: last.prev_lapses ?? 0,
+      };
+      const r = gradeCard(base, grade);
+      const due = nowSec() + r.dueInSec;
+      db.query(
+        "UPDATE cards SET ease=?, interval_days=?, reps=?, lapses=?, due=? WHERE id=?"
+      ).run(r.ease, r.interval_days, r.reps, r.lapses, due, cardId);
+      db.query("UPDATE reviews SET grade=?, next_interval=? WHERE id=?").run(
+        grade,
+        r.nextIntervalDays,
+        last.id
+      );
       return json({ ok: true, due, nextIntervalDays: r.nextIntervalDays });
     }
 

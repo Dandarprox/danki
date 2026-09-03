@@ -61,7 +61,7 @@ Both are idempotent (they skip if the deck already exists).
 |---|---|
 | Add card | `Enter` save · `⇧↵` newline · `⌘/Ctrl+Enter` save · `N` focus form · `Esc` cancel |
 | Search cards | `/` focus |
-| Study | `Space` flip · `1` Again · `2` Hard · `3` Good · `4` Easy · `E` instant Easy (no reveal — for cards you know cold) |
+| Study | `Space` flip · `1` Again · `2` Hard · `3` Good · `4` Easy · `E` instant Easy (no reveal — for cards you know cold) · `←`/`→` revisit graded cards and correct the grade |
 
 ## 🧠 How scheduling works
 
