@@ -550,6 +550,16 @@ function Study({ deckId, onDone, onError }: {
   const shown = viewing != null ? history[viewing].item : cur;
   const pv = useMemo(() => (shown ? previews(shown) : null), [shown]);
   const busyRef = useRef(false);
+  // swipe-to-grade (mobile): drag state + touch origin + tap-vs-swipe guard
+  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
+  const touchOrigin = useRef<{ x: number; y: number } | null>(null);
+  const swipedRef = useRef(false);
+
+  const buzz = (ms = 12) => {
+    try {
+      navigator.vibrate?.(ms);
+    } catch {}
+  };
 
   const grade = async (g: number) => {
     if (!cur || busyRef.current) return;
@@ -557,6 +567,7 @@ function Study({ deckId, onDone, onError }: {
     try {
       await api.review(cur.id, cur.side, g);
       setHistory((h) => [...h, { item: cur, grade: g }]);
+      buzz();
     } catch (e: any) {
       onError(e.message);
     }
@@ -589,6 +600,7 @@ function Study({ deckId, onDone, onError }: {
       await api.regrade(h.item.id, h.item.side, g);
       setHistory((prev) => prev.map((x, i) => (i === viewing ? { ...x, grade: g } : x)));
       onError(`Corrected to ${GRADE_NAMES[g]} ✓`);
+      buzz();
     } catch (e: any) {
       onError(e.message);
     } finally {
@@ -597,6 +609,51 @@ function Study({ deckId, onDone, onError }: {
     setViewing(null);
     setShow(false);
   };
+
+  // Swipe mapping: hidden card → swipe right = instant Easy;
+  // revealed (or correction) → ← Again, → Good, ↑ Easy, ↓ Hard.
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchOrigin.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!touchOrigin.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchOrigin.current.x;
+    const dy = t.clientY - touchOrigin.current.y;
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) swipedRef.current = true;
+    setDrag({ dx, dy });
+  };
+  const onTouchEnd = () => {
+    const o = touchOrigin.current;
+    const d = drag;
+    touchOrigin.current = null;
+    setDrag(null);
+    if (!o || !d) return;
+    const TH = 90;
+    if (Math.max(Math.abs(d.dx), Math.abs(d.dy)) < TH) return;
+    const pick = viewing != null ? correct : grade;
+    if (viewing == null && !show) {
+      if (d.dx > 0 && Math.abs(d.dx) >= Math.abs(d.dy)) grade(5);
+      return;
+    }
+    if (Math.abs(d.dx) >= Math.abs(d.dy)) pick(d.dx > 0 ? 4 : 1);
+    else pick(d.dy < 0 ? 5 : 3);
+  };
+  const swipeLabel =
+    drag && Math.max(Math.abs(drag.dx), Math.abs(drag.dy)) > 30
+      ? viewing == null && !show
+        ? drag.dx > 0 && Math.abs(drag.dx) >= Math.abs(drag.dy)
+          ? "Easy →"
+          : null
+        : Math.abs(drag.dx) >= Math.abs(drag.dy)
+          ? drag.dx > 0
+            ? "Good →"
+            : "← Again"
+          : drag.dy < 0
+            ? "Easy ↑"
+            : "Hard ↓"
+      : null;
 
   // keyboard: space flip, 1-4 grade, E = instant Easy,
   // ArrowLeft/Right = step through graded cards to correct them
@@ -740,10 +797,34 @@ function Study({ deckId, onDone, onError }: {
         </button>
       </div>
 
-      <div className="[perspective:1200px] mt-4">
+      <div
+        className="[perspective:1200px] mt-4 relative select-none study-swipe"
+        style={
+          drag
+            ? { transform: `translate(${drag.dx * 0.55}px, ${drag.dy * 0.35}px) rotate(${drag.dx * 0.04}deg)` }
+            : { transition: "transform .2s ease" }
+        }
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {swipeLabel && (
+          <div className="absolute inset-0 z-10 grid place-items-center pointer-events-none">
+            <span className="px-4 py-2 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-extrabold text-xl shadow-xl">
+              {swipeLabel}
+            </span>
+          </div>
+        )}
         <button
-          onClick={() => setShow((s) => !s)}
+          onClick={() => {
+            if (swipedRef.current) {
+              swipedRef.current = false;
+              return;
+            }
+            setShow((s) => !s);
+          }}
           className={`flip-inner relative w-full min-h-[320px] rounded-3xl ${show ? "flipped" : ""}`}
+          aria-label={show ? "Hide answer" : "Show answer"}
         >
           <div className="flip-face card-paper absolute inset-0 rounded-3xl p-8 grid place-items-center">
             <div>
@@ -784,13 +865,21 @@ function Study({ deckId, onDone, onError }: {
               Correction mode — this overwrites your {GRADE_NAMES[history[viewing].grade]} grade
             </p>
           )}
-          <div className="grid grid-cols-4 gap-2 mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pb-[env(safe-area-inset-bottom)]">
             <GradeBtn label="Again" sub={pv!.again} kbd="1" cls="btn-grade-again" onClick={() => (viewing != null ? correct(1) : grade(1))} />
             <GradeBtn label="Hard" sub={pv!.hard} kbd="2" cls="btn-grade-hard" onClick={() => (viewing != null ? correct(3) : grade(3))} />
             <GradeBtn label="Good" sub={pv!.good} kbd="3" cls="btn-grade-good" onClick={() => (viewing != null ? correct(4) : grade(4))} />
             <GradeBtn label="Easy" sub={pv!.easy} kbd="4" cls="btn-grade-easy" onClick={() => (viewing != null ? correct(5) : grade(5))} />
           </div>
+          <p className="md:hidden text-center text-xs text-stone-400 mt-3">
+            tap = flip · swipe ← Again · → Good · ↑ Easy · ↓ Hard
+          </p>
         </div>
+      )}
+      {!show && viewing == null && (
+        <p className="md:hidden text-center text-xs text-stone-400 mt-3">
+          tap = flip · swipe → = Easy
+        </p>
       )}
     </div>
   );
@@ -808,7 +897,7 @@ function GradeBtn({ label, sub, kbd, cls, onClick }: {
   label: string; sub: string; kbd: string; cls: string; onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className={`${cls} rounded-2xl py-3 font-semibold transition-transform active:scale-95`}>
+    <button onClick={onClick} className={`${cls} rounded-2xl py-4 sm:py-3 font-semibold transition-transform active:scale-95 text-lg sm:text-base`}>
       <div>{label}</div>
       <div className="text-xs opacity-70 font-normal">{sub} • {kbd}</div>
     </button>

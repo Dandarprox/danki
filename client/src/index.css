@@ -40,6 +40,11 @@ body {
 .flip-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .flip-back { transform: rotateY(180deg); }
 
+/* mobile study gestures */
+.study-swipe { touch-action: pan-y; }
+.study-swipe-drag { transition: none !important; }
+button { touch-action: manipulation; }
+
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
