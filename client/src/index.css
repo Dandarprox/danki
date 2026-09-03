@@ -40,8 +40,8 @@ body {
 .flip-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .flip-back { transform: rotateY(180deg); }
 
-/* mobile study gestures */
-.study-swipe { touch-action: pan-y; }
+/* mobile study gestures: touches starting on the card always grade, never scroll */
+.study-swipe { touch-action: none; }
 .study-swipe-drag { transition: none !important; }
 button { touch-action: manipulation; }
 
