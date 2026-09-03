@@ -140,6 +140,18 @@ bun run cf:secret    # set remote API_TOKEN
 bun run seeds:sql    # regenerate seeds.sql from server/seed-*.ts
 ```
 
+### CI: auto-deploy on push to main
+
+`.github/workflows/deploy.yml` runs `bun test`, builds with the token, applies
+D1 migrations, syncs the `API_TOKEN` secret, and deploys. Needs three repo
+secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Custom token ([create here](https://dash.cloudflare.com/profile/api-tokens)): Account → **D1: Edit** + **Workers Scripts: Edit**, on your account |
+| `CLOUDFLARE_ACCOUNT_ID` | `c8017160375a90ecd21b612453151a45` |
+| `API_TOKEN_VALUE` | The shared-secret string (same one stored as the worker's `API_TOKEN` secret and baked in via `VITE_API_TOKEN`) |
+
 ### Cheaper alternative: share from this Mac (temporary)
 
 ```bash
