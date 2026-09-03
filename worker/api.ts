@@ -32,13 +32,36 @@ const json = (data: unknown, status = 200) =>
 
 async function deckCounts(DB: D1, deckId: string) {
   const now = nowSec();
-  const total = await DB.prepare("SELECT COUNT(*) c FROM cards WHERE deck_id=?")
+  const sub = `WITH RECURSIVE sub(id) AS (
+     SELECT ? UNION SELECT d.id FROM decks d JOIN sub s ON d.parent_id = s.id
+   )`;
+  const total = await DB.prepare(
+    `${sub} SELECT COUNT(*) c FROM cards WHERE deck_id IN sub`
+  ).bind(deckId).first<{ c: number }>();
+  const due = await DB.prepare(
+    `${sub} SELECT COUNT(*) c FROM cards WHERE deck_id IN sub AND due<=?`
+  ).bind(deckId, now).first<{ c: number }>();
+  const fresh = await DB.prepare(
+    `${sub} SELECT COUNT(*) c FROM cards WHERE deck_id IN sub AND reps=0`
+  ).bind(deckId).first<{ c: number }>();
+  const children = await DB.prepare("SELECT COUNT(*) c FROM decks WHERE parent_id=?")
     .bind(deckId).first<{ c: number }>();
-  const due = await DB.prepare("SELECT COUNT(*) c FROM cards WHERE deck_id=? AND due<=?")
-    .bind(deckId, now).first<{ c: number }>();
-  const fresh = await DB.prepare("SELECT COUNT(*) c FROM cards WHERE deck_id=? AND reps=0")
-    .bind(deckId).first<{ c: number }>();
-  return { total: total?.c ?? 0, due: due?.c ?? 0, isNew: fresh?.c ?? 0, today: startOfTodaySec() };
+  return {
+    total: total?.c ?? 0,
+    due: due?.c ?? 0,
+    isNew: fresh?.c ?? 0,
+    today: startOfTodaySec(),
+    children: children?.c ?? 0,
+  };
+}
+
+async function descendants(DB: D1, deckId: string): Promise<string[]> {
+  const rows = await DB.prepare(
+    `WITH RECURSIVE sub(id) AS (
+       SELECT ? UNION SELECT d.id FROM decks d JOIN sub s ON d.parent_id = s.id
+     ) SELECT id FROM sub WHERE id != ?`
+  ).bind(deckId, deckId).all<{ id: string }>();
+  return rows.results.map((r) => r.id);
 }
 
 export default {
@@ -83,11 +106,17 @@ export default {
       return json(out);
     }
     if (pathname === "/api/decks" && req.method === "POST") {
-      const { name } = (await req.json().catch(() => ({}))) as { name?: string };
+      const { name, parent_id } = (await req.json().catch(() => ({}))) as {
+        name?: string; parent_id?: string | null;
+      };
       if (!name?.trim()) return json({ error: "Name required" }, 400);
+      if (parent_id) {
+        const p = await DB.prepare("SELECT id FROM decks WHERE id=?").bind(parent_id).first();
+        if (!p) return json({ error: "Parent deck not found" }, 404);
+      }
       const id = uid();
-      await DB.prepare("INSERT INTO decks(id,name,created_at) VALUES(?,?,?)")
-        .bind(id, name.trim(), nowSec()).run();
+      await DB.prepare("INSERT INTO decks(id,name,parent_id,created_at) VALUES(?,?,?,?)")
+        .bind(id, name.trim(), parent_id ?? null, nowSec()).run();
       return json({ id, name: name.trim() }, 201);
     }
 
@@ -100,11 +129,30 @@ export default {
       if (!cardsSuffix && req.method === "GET")
         return json({ ...deck, ...(await deckCounts(DB, id)) });
       if (!cardsSuffix && req.method === "PATCH") {
-        const { name } = (await req.json().catch(() => ({}))) as { name?: string };
-        await DB.prepare("UPDATE decks SET name=? WHERE id=?").bind(name?.trim() ?? "", id).run();
+        const { name, parent_id } = (await req.json().catch(() => ({}))) as {
+          name?: string; parent_id?: string | null;
+        };
+        if (name !== undefined) {
+          if (!name.trim()) return json({ error: "Name required" }, 400);
+          await DB.prepare("UPDATE decks SET name=? WHERE id=?").bind(name.trim(), id).run();
+        }
+        if (parent_id !== undefined) {
+          if (parent_id === id) return json({ error: "A deck can't be its own parent" }, 400);
+          if (parent_id) {
+            const p = await DB.prepare("SELECT id FROM decks WHERE id=?").bind(parent_id).first();
+            if (!p) return json({ error: "Parent deck not found" }, 404);
+            if ((await descendants(DB, id)).includes(parent_id))
+              return json({ error: "Can't move a deck inside its own child" }, 400);
+          }
+          await DB.prepare("UPDATE decks SET parent_id=? WHERE id=?").bind(parent_id, id).run();
+        }
         return json({ ok: true });
       }
       if (!cardsSuffix && req.method === "DELETE") {
+        const kids = await DB.prepare("SELECT COUNT(*) c FROM decks WHERE parent_id=?")
+          .bind(id).first<{ c: number }>();
+        if ((kids?.c ?? 0) > 0)
+          return json({ error: "Move or delete the lists inside first" }, 400);
         await DB.prepare("DELETE FROM decks WHERE id=?").bind(id).run();
         return json({ ok: true });
       }
@@ -146,17 +194,31 @@ export default {
 
     if (pathname === "/api/study/queue" && req.method === "GET") {
       const deckId = url.searchParams.get("deckId");
+      const deckIds = (url.searchParams.get("deckIds") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const limit = Math.min(1000, Number(url.searchParams.get("limit") ?? 50));
       const now = nowSec();
-      const rows = deckId
-        ? (await DB.prepare(
-            `SELECT c.*, d.name deck_name FROM cards c JOIN decks d ON d.id=c.deck_id
-             WHERE c.deck_id=? AND c.due<=? ORDER BY c.reps ASC, c.due ASC LIMIT ?`
-          ).bind(deckId, now, limit).all()).results
-        : (await DB.prepare(
-            `SELECT c.*, d.name deck_name FROM cards c JOIN decks d ON d.id=c.deck_id
-             WHERE c.due<=? ORDER BY c.reps ASC, c.due ASC LIMIT ?`
-          ).bind(now, limit).all()).results;
+      const wanted = [...deckIds, ...(deckId ? [deckId] : [])];
+      let scope = "";
+      const scopeParams: unknown[] = [];
+      if (wanted.length > 0) {
+        const expanded = new Set<string>();
+        for (const wid of wanted) {
+          expanded.add(wid);
+          for (const d of await descendants(DB, wid)) expanded.add(d);
+        }
+        const list = [...expanded];
+        scope = `AND c.deck_id IN (${list.map(() => "?").join(",")})`;
+        scopeParams.push(...list);
+      }
+      const rows = (
+        await DB.prepare(
+          `SELECT c.*, d.name deck_name FROM cards c JOIN decks d ON d.id=c.deck_id
+           WHERE c.due<=? ${scope} ORDER BY c.reps ASC, c.due ASC LIMIT ?`
+        ).bind(now, ...scopeParams, limit).all()
+      ).results;
       const items: Record<string, unknown>[] = [];
       for (const c of rows as ({ is_reversed: number; front: string; back: string } & Record<string, unknown>)[]) {
         items.push({ ...c, side: "forward", q: c.front, a: c.back });

@@ -20,15 +20,45 @@ async function body<T>(req: Request): Promise<T> {
 
 function deckCounts(deckId: string) {
   const today = startOfTodaySec();
-  const total =
-    db.query("SELECT COUNT(*) c FROM cards WHERE deck_id=?").get(deckId) as any;
-  const due = db
-    .query("SELECT COUNT(*) c FROM cards WHERE deck_id=? AND due<=?")
-    .get(deckId, nowSec()) as any;
-  const fresh = db
-    .query("SELECT COUNT(*) c FROM cards WHERE deck_id=? AND reps=0")
+  const now = nowSec();
+  // Rollups include all descendant decks (a deck with children is a category).
+  const total = db
+    .query(
+      `WITH RECURSIVE sub(id) AS (
+         SELECT ? UNION SELECT d.id FROM decks d JOIN sub s ON d.parent_id = s.id
+       ) SELECT COUNT(*) c FROM cards WHERE deck_id IN sub`
+    )
     .get(deckId) as any;
-  return { total: total.c, due: due.c, isNew: fresh.c, today };
+  const due = db
+    .query(
+      `WITH RECURSIVE sub(id) AS (
+         SELECT ? UNION SELECT d.id FROM decks d JOIN sub s ON d.parent_id = s.id
+       ) SELECT COUNT(*) c FROM cards WHERE deck_id IN sub AND due<=?`
+    )
+    .get(deckId, now) as any;
+  const fresh = db
+    .query(
+      `WITH RECURSIVE sub(id) AS (
+         SELECT ? UNION SELECT d.id FROM decks d JOIN sub s ON d.parent_id = s.id
+       ) SELECT COUNT(*) c FROM cards WHERE deck_id IN sub AND reps=0`
+    )
+    .get(deckId) as any;
+  const children = db
+    .query("SELECT COUNT(*) c FROM decks WHERE parent_id=?")
+    .get(deckId) as any;
+  return { total: total.c, due: due.c, isNew: fresh.c, today, children: children.c };
+}
+
+// All descendant deck ids (for category study + cycle guard).
+function descendants(deckId: string): string[] {
+  const rows = db
+    .query(
+      `WITH RECURSIVE sub(id) AS (
+         SELECT ? UNION SELECT d.id FROM decks d JOIN sub s ON d.parent_id = s.id
+       ) SELECT id FROM sub WHERE id != ?`
+    )
+    .all(deckId, deckId) as { id: string }[];
+  return rows.map((r) => r.id);
 }
 
 const server = Bun.serve({
@@ -68,10 +98,19 @@ const server = Bun.serve({
       return json(decks.map((d) => ({ ...d, ...deckCounts(d.id) })));
     }
     if (pathname === "/api/decks" && req.method === "POST") {
-      const { name } = await body<{ name: string }>(req);
+      const { name, parent_id } = await body<{ name: string; parent_id?: string | null }>(req);
       if (!name?.trim()) return json({ error: "Name required" }, 400);
+      if (parent_id) {
+        const p = db.query("SELECT id FROM decks WHERE id=?").get(parent_id) as any;
+        if (!p) return json({ error: "Parent deck not found" }, 404);
+      }
       const id = uid();
-      db.query("INSERT INTO decks(id,name,created_at) VALUES(?,?,?)").run(id, name.trim(), nowSec());
+      db.query("INSERT INTO decks(id,name,parent_id,created_at) VALUES(?,?,?,?)").run(
+        id,
+        name.trim(),
+        parent_id ?? null,
+        nowSec()
+      );
       return json({ id, name: name.trim() }, 201);
     }
 
@@ -84,11 +123,27 @@ const server = Bun.serve({
       if (!cardsSuffix && req.method === "GET")
         return json({ ...deck, ...deckCounts(id) });
       if (!cardsSuffix && req.method === "PATCH") {
-        const { name } = await body<{ name: string }>(req);
-        db.query("UPDATE decks SET name=? WHERE id=?").run(name.trim(), id);
+        const { name, parent_id } = await body<{ name?: string; parent_id?: string | null }>(req);
+        if (name !== undefined) {
+          if (!name.trim()) return json({ error: "Name required" }, 400);
+          db.query("UPDATE decks SET name=? WHERE id=?").run(name.trim(), id);
+        }
+        if (parent_id !== undefined) {
+          if (parent_id === id) return json({ error: "A deck can't be its own parent" }, 400);
+          if (parent_id) {
+            const p = db.query("SELECT id FROM decks WHERE id=?").get(parent_id) as any;
+            if (!p) return json({ error: "Parent deck not found" }, 404);
+            if (descendants(id).includes(parent_id))
+              return json({ error: "Can't move a deck inside its own child" }, 400);
+          }
+          db.query("UPDATE decks SET parent_id=? WHERE id=?").run(parent_id, id);
+        }
         return json({ ok: true });
       }
       if (!cardsSuffix && req.method === "DELETE") {
+        const kids = db.query("SELECT COUNT(*) c FROM decks WHERE parent_id=?").get(id) as any;
+        if (kids.c > 0)
+          return json({ error: "Move or delete the lists inside first" }, 400);
         db.query("DELETE FROM decks WHERE id=?").run(id);
         return json({ ok: true });
       }
@@ -129,15 +184,32 @@ const server = Bun.serve({
 
     if (pathname === "/api/study/queue" && req.method === "GET") {
       const deckId = url.searchParams.get("deckId");
+      // deckIds: explicit multi-select (individual lists and/or categories —
+      // categories expand to all descendant lists server-side).
+      const deckIds = (url.searchParams.get("deckIds") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       const limit = Math.min(1000, Number(url.searchParams.get("limit") ?? 50));
       const now = nowSec();
-      const where = deckId ? "WHERE c.deck_id=?" : "";
-      const params: any[] = deckId ? [deckId, now, limit] : [now, limit];
+      let scope = "";
+      let params: any[] = [now, limit];
+      const wanted = [...deckIds, ...(deckId ? [deckId] : [])];
+      if (wanted.length > 0) {
+        const expanded = new Set<string>();
+        for (const id of wanted) {
+          expanded.add(id);
+          for (const d of descendants(id)) expanded.add(d);
+        }
+        const list = [...expanded];
+        scope = `AND c.deck_id IN (${list.map(() => "?").join(",")})`;
+        params = [...list, now, limit];
+      }
       // new cards first, then most overdue
       const rows = db
         .query(
           `SELECT c.*, d.name deck_name FROM cards c JOIN decks d ON d.id=c.deck_id
-           ${where ? where + " AND" : "WHERE"} c.due<=? ORDER BY c.reps ASC, c.due ASC LIMIT ?`
+           WHERE c.due<=? ${scope} ORDER BY c.reps ASC, c.due ASC LIMIT ?`
         )
         .all(...params) as any[];
       // expand reversed cards into two study items

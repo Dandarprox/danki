@@ -55,6 +55,13 @@ CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at);
     db.exec("ALTER TABLE reviews ADD COLUMN prev_lapses INTEGER NOT NULL DEFAULT 0");
 }
 
+// Migration: deck nesting for categories (a deck with children is a category).
+{
+  const cols = db.query("PRAGMA table_info(decks)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "parent_id"))
+    db.exec("ALTER TABLE decks ADD COLUMN parent_id TEXT REFERENCES decks(id)");
+}
+
 export const uid = () =>
   Bun.randomUUIDv7 ? Bun.randomUUIDv7() : Math.random().toString(36).slice(2);
 

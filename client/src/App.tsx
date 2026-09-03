@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Card, type Deck, type StudyItem } from "./lib/api";
 
-type View = { name: "home" } | { name: "deck"; id: string } | { name: "study"; deckId?: string };
+type View =
+  | { name: "home" }
+  | { name: "deck"; id: string }
+  | { name: "study"; deckIds?: string[]; title?: string };
 
 function useTheme() {
   const [dark, setDark] = useState(() =>
@@ -115,20 +118,23 @@ export default function App() {
             decks={decks}
             overview={overview}
             onOpen={(id) => setView({ name: "deck", id })}
-            onStudy={(deckId) => setView({ name: "study", deckId })}
+            onStudy={(deckIds, title) => setView({ name: "study", deckIds, title })}
             onChanged={refresh}
             onError={setToast}
           />
         ) : view.name === "deck" ? (
           <DeckDetail
             id={view.id}
+            decks={decks}
             onBack={() => { setView({ name: "home" }); refresh(); }}
-            onStudy={() => setView({ name: "study", deckId: view.id })}
+            onStudy={(deckIds, title) => setView({ name: "study", deckIds, title })}
+            onChanged={refresh}
             onError={setToast}
           />
         ) : (
           <Study
-            deckId={view.deckId}
+            deckIds={view.deckIds}
+            title={view.title}
             onDone={() => { setView({ name: "home" }); refresh(); }}
             onError={setToast}
           />
@@ -148,21 +154,65 @@ export default function App() {
   );
 }
 
+function DuePills({ d }: { d: Deck }) {
+  return (
+    <div className="mt-2 flex gap-2 text-xs font-semibold flex-wrap">
+      <span className={`px-2 py-1 rounded-full ${d.due > 0 ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"}`}>
+        {d.due} due
+      </span>
+      <span className="px-2 py-1 rounded-full bg-stone-100 text-stone-500 dark:bg-white/10 dark:text-stone-300">
+        {d.total} cards
+      </span>
+      {d.isNew > 0 && (
+        <span className="px-2 py-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+          {d.isNew} new
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Home({ decks, overview, onOpen, onStudy, onChanged, onError }: {
   decks: Deck[]; overview: { total: number; due: number; streak: number };
-  onOpen: (id: string) => void; onStudy: (deckId?: string) => void;
+  onOpen: (id: string) => void; onStudy: (ids: string[], title: string) => void;
   onChanged: () => void; onError: (m: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [kind, setKind] = useState<"list" | "category">("list");
+  const [parent, setParent] = useState("");
   const [adding, setAdding] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [closed, setClosed] = useState<Record<string, boolean>>({});
+
+  const byId = useMemo(() => new Map(decks.map((d) => [d.id, d])), [decks]);
+  const childrenOf = useCallback((pid: string | null) => decks.filter((d) => d.parent_id === pid), [decks]);
+  const categories = useMemo(() => decks.filter((d) => d.children > 0), [decks]);
+  const topLeaves = useMemo(() => decks.filter((d) => !d.parent_id && d.children === 0), [decks]);
+
+  // drop selection for decks that no longer exist
+  useEffect(() => {
+    setSelected((s) => s.filter((id) => byId.has(id)));
+  }, [byId]);
+
+  const selDue = selected.reduce((n, id) => n + (byId.get(id)?.due ?? 0), 0);
+  const toggleList = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toggleCat = (catId: string) => {
+    const leaves = childrenOf(catId).map((l) => l.id);
+    setSelected((s) =>
+      leaves.every((id) => s.includes(id))
+        ? s.filter((id) => !leaves.includes(id))
+        : [...new Set([...s, ...leaves])]
+    );
+  };
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setAdding(true);
     try {
-      await api.createDeck(name.trim());
-      setName("");
+      await api.createDeck(name.trim(), kind === "list" ? parent || null : null);
+      setName(""); setParent("");
       onChanged();
     } catch (e: any) {
       onError(e.message);
@@ -193,7 +243,7 @@ function Home({ decks, overview, onOpen, onStudy, onChanged, onError }: {
         </p>
         <div className="mt-5 flex items-center justify-center gap-2 flex-wrap">
           <button
-            onClick={() => onStudy(undefined)}
+            onClick={() => onStudy([], "All decks")}
             disabled={overview.total === 0}
             className="px-6 py-3 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
           >
@@ -210,62 +260,151 @@ function Home({ decks, overview, onOpen, onStudy, onChanged, onError }: {
         )}
       </div>
 
-      <form onSubmit={create} className="mt-6 flex gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="New deck — e.g. Japanese N5"
-          aria-label="New deck name"
-          maxLength={80}
-          className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-white/10 outline-none focus:ring-2 ring-stone-900/10 placeholder:text-stone-400"
-        />
-        <button
-          type="submit"
-          disabled={adding || !name.trim()}
-          className="px-5 py-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-white/10 font-semibold hover:bg-stone-50 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
-        >
-          {adding ? "…" : "Add"}
-        </button>
+      <form onSubmit={create} className="mt-6">
+        <div className="flex gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={kind === "category" ? "New category — e.g. Français" : "New list — e.g. Verbes"}
+            aria-label="New deck name"
+            maxLength={80}
+            className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-white/10 outline-none focus:ring-2 ring-stone-900/10 placeholder:text-stone-400"
+          />
+          <button
+            type="submit"
+            disabled={adding || !name.trim()}
+            className="px-5 py-3 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-white/10 font-semibold hover:bg-stone-50 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
+          >
+            {adding ? "…" : "Add"}
+          </button>
+        </div>
+        <div className="mt-2 flex items-center gap-2 text-xs flex-wrap">
+          <div className="flex rounded-xl border border-stone-200 dark:border-white/10 overflow-hidden" role="tablist" aria-label="Kind">
+            {(["list", "category"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={kind === k}
+                onClick={() => setKind(k)}
+                className={`px-3 py-1.5 font-semibold capitalize ${kind === k ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900" : "text-stone-500"}`}
+              >
+                {k === "list" ? "📝 List" : "🗂️ Category"}
+              </button>
+            ))}
+          </div>
+          {kind === "list" && categories.length > 0 && (
+            <select
+              value={parent}
+              onChange={(e) => setParent(e.target.value)}
+              aria-label="Parent category"
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-white/10 text-stone-600 dark:text-stone-300 outline-none"
+            >
+              <option value="">Top level</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>in {c.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </form>
 
-      <div className="grid sm:grid-cols-2 gap-3 mt-4">
-        {decks.map((d) => (
-          <div
-            key={d.id}
-            onClick={() => onOpen(d.id)}
-            onKeyDown={(e) => { if (e.key === "Enter") onOpen(d.id); }}
-            role="button"
-            tabIndex={0}
-            className="deck-card card-paper rounded-2xl p-5 text-left cursor-pointer group"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="font-bold text-lg leading-tight truncate">{d.name}</div>
-              {d.due > 0 && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onStudy(d.id); }}
-                  className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full bg-stone-900 text-white dark:bg-white dark:text-stone-900 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-                  aria-label={`Study ${d.name} now`}
-                >
-                  Study →
-                </button>
-              )}
-            </div>
-            <div className="mt-2 flex gap-2 text-xs font-semibold flex-wrap">
-              <span className={`px-2 py-1 rounded-full ${d.due > 0 ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"}`}>
-                {d.due} due
-              </span>
-              <span className="px-2 py-1 rounded-full bg-stone-100 text-stone-500 dark:bg-white/10 dark:text-stone-300">
-                {d.total} cards
-              </span>
-              {d.isNew > 0 && (
-                <span className="px-2 py-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
-                  {d.isNew} new
+      {/* categories with their lists */}
+      {categories.map((c) => {
+        const leaves = childrenOf(c.id);
+        const allSel = leaves.length > 0 && leaves.every((l) => selected.includes(l.id));
+        const someSel = leaves.some((l) => selected.includes(l.id));
+        const isOpen = closed[c.id] !== true;
+        return (
+          <div key={c.id} className="card-paper rounded-2xl mt-4 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={allSel}
+                ref={(el) => { if (el) el.indeterminate = someSel && !allSel; }}
+                onChange={() => toggleCat(c.id)}
+                aria-label={`Select all lists in ${c.name}`}
+                className="w-4 h-4 accent-stone-900 shrink-0"
+              />
+              <button
+                onClick={() => setClosed((m) => ({ ...m, [c.id]: isOpen ? true : false }))}
+                className="flex-1 flex items-center gap-2 text-left min-w-0"
+                aria-expanded={isOpen}
+              >
+                <span className="text-stone-400 text-sm w-4">{isOpen ? "▾" : "▸"}</span>
+                <span className="font-extrabold text-lg tracking-tight truncate">🗂️ {c.name}</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${c.due > 0 ? "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"}`}>
+                  {c.due} due
                 </span>
-              )}
+                <span className="text-xs text-stone-400 font-medium hidden sm:inline">{c.total} cards · {leaves.length} lists</span>
+              </button>
+              <button
+                onClick={() => onStudy(leaves.map((l) => l.id), c.name)}
+                className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full bg-stone-900 text-white dark:bg-white dark:text-stone-900"
+              >
+                Study →
+              </button>
             </div>
+            {isOpen && (
+              <div className="border-t border-stone-200/70 dark:border-white/10 divide-y divide-stone-100 dark:divide-white/5">
+                {leaves.map((l) => (
+                  <div key={l.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-stone-50 dark:hover:bg-white/5 group">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(l.id)}
+                      onChange={() => toggleList(l.id)}
+                      aria-label={`Select ${l.name}`}
+                      className="w-4 h-4 accent-stone-900 shrink-0"
+                    />
+                    <button onClick={() => onOpen(l.id)} className="flex-1 text-left min-w-0">
+                      <span className="font-semibold truncate block">{l.name}</span>
+                      <span className="text-xs text-stone-400">{l.due} due · {l.total} cards{l.isNew > 0 ? ` · ${l.isNew} new` : ""}</span>
+                    </button>
+                    {l.due > 0 && (
+                      <button
+                        onClick={() => onStudy([l.id], l.name)}
+                        className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border border-stone-200 dark:border-white/15 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                      >
+                        Study →
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        ))}
-      </div>
+        );
+      })}
+
+      {/* top-level standalone lists */}
+      {topLeaves.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-3 mt-4">
+          {topLeaves.map((d) => (
+            <div
+              key={d.id}
+              onClick={() => onOpen(d.id)}
+              onKeyDown={(e) => { if (e.key === "Enter") onOpen(d.id); }}
+              role="button"
+              tabIndex={0}
+              className="deck-card card-paper rounded-2xl p-5 text-left cursor-pointer group"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-bold text-lg leading-tight truncate">{d.name}</div>
+                {d.due > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onStudy([d.id], d.name); }}
+                    className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-full bg-stone-900 text-white dark:bg-white dark:text-stone-900 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                    aria-label={`Study ${d.name} now`}
+                  >
+                    Study →
+                  </button>
+                )}
+              </div>
+              <DuePills d={d} />
+            </div>
+          ))}
+        </div>
+      )}
       {decks.length === 0 && (
         <div className="text-center mt-8 card-paper rounded-2xl p-6">
           <div className="text-3xl">🗂️</div>
@@ -273,15 +412,32 @@ function Home({ decks, overview, onOpen, onStudy, onChanged, onError }: {
           <p className="text-stone-500 text-sm mt-1">Create one above, open it, then smash out your first 5 cards with <Kbd>Enter</Kbd> to save each one.</p>
         </div>
       )}
+
+      {/* floating study-selected bar */}
+      {selected.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 shadow-2xl text-sm font-semibold animate-toast">
+          <span>{selected.length} list{selected.length === 1 ? "" : "s"} · {selDue} due</span>
+          <button
+            onClick={() => onStudy(selected, selected.length === 1 ? (byId.get(selected[0])?.name ?? "Selected") : `${selected.length} lists`)}
+            className="px-4 py-1.5 rounded-xl bg-white text-stone-900 dark:bg-stone-900 dark:text-white font-bold"
+          >
+            Study →
+          </button>
+          <button onClick={() => setSelected([])} className="opacity-70 hover:opacity-100 px-1" aria-label="Clear selection">✕</button>
+        </div>
+      )}
     </div>
   );
 }
 
-function DeckDetail({ id, onBack, onStudy, onError }: {
-  id: string; onBack: () => void; onStudy: () => void; onError: (m: string) => void;
+function DeckDetail({ id, decks, onBack, onStudy, onChanged, onError }: {
+  id: string; decks: Deck[]; onBack: () => void;
+  onStudy: (ids: string[], title: string) => void; onChanged: () => void;
+  onError: (m: string) => void;
 }) {
   const [cards, setCards] = useState<Card[]>([]);
   const [deckName, setDeckName] = useState("");
+  const [parentId, setParentId] = useState<string | null>(null);
   const [due, setDue] = useState(0);
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
@@ -329,6 +485,7 @@ function DeckDetail({ id, onBack, onStudy, onError }: {
         api.deckCards(id),
       ]);
       setDeckName(deckRes.name);
+      setParentId(deckRes.parent_id ?? null);
       setDue(deckRes.due);
       setCards(cardRes);
     } catch (e: any) {
@@ -383,27 +540,55 @@ function DeckDetail({ id, onBack, onStudy, onError }: {
     }
   };
 
+  const parentName = decks.find((d) => d.id === parentId)?.name;
+  const categoryOpts = decks.filter((d) => d.children > 0 && d.id !== id);
+
   return (
     <div>
-      <button onClick={onBack} className="text-sm text-stone-500 hover:text-stone-900 dark:hover:text-white">← All decks</button>
+      <button onClick={onBack} className="text-sm text-stone-500 hover:text-stone-900 dark:hover:text-white">
+        ← All decks{parentName ? ` / ${parentName}` : ""}
+      </button>
       <div className="mt-2 flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight">{deckName}</h2>
           <p className="text-sm text-stone-500">{cards.length} cards • {due} due</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          <select
+            value={parentId ?? ""}
+            onChange={async (e) => {
+              try {
+                await api.moveDeck(id, e.target.value || null);
+                load(); onChanged();
+              } catch (err: any) {
+                onError(err.message);
+              }
+            }}
+            aria-label="Move to category"
+            title="Move to category"
+            className="px-3 py-2.5 rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-white/10 text-sm outline-none max-w-[160px]"
+          >
+            <option value="">📁 Top level</option>
+            {categoryOpts.map((c) => (
+              <option key={c.id} value={c.id}>📁 {c.name}</option>
+            ))}
+          </select>
           <button
             onClick={async () => {
               if (!confirm(`Delete deck "${deckName}" and all its cards?`)) return;
-              await api.deleteDeck(id);
-              onBack();
+              try {
+                await api.deleteDeck(id);
+                onBack();
+              } catch (err: any) {
+                onError(err.message);
+              }
             }}
             className="px-4 py-2.5 rounded-xl text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
           >
             Delete
           </button>
           <button
-            onClick={onStudy}
+            onClick={() => onStudy([id], deckName)}
             className="px-5 py-2.5 rounded-xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold text-sm"
           >
             Study → {due > 0 ? `(${due})` : ""}
@@ -514,8 +699,8 @@ function DeckDetail({ id, onBack, onStudy, onError }: {
   );
 }
 
-function Study({ deckId, onDone, onError }: {
-  deckId?: string; onDone: () => void; onError: (m: string) => void;
+function Study({ deckIds, title, onDone, onError }: {
+  deckIds?: string[]; title?: string; onDone: () => void; onError: (m: string) => void;
 }) {
   const [allDue, setAllDue] = useState<StudyItem[] | null>(null);
   const [queue, setQueue] = useState<StudyItem[]>([]);
@@ -526,10 +711,10 @@ function Study({ deckId, onDone, onError }: {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    api.queue(deckId, 1000).then((q) => {
+    api.queue(undefined, 1000, deckIds?.length ? deckIds : undefined).then((q) => {
       setAllDue(q); setLoaded(true);
     }).catch((e) => { onError(e.message); setLoaded(true); });
-  }, [deckId, onError]);
+  }, [deckIds?.join(","), onError]);
 
   const start = (n: number) => {
     if (!allDue) return;
@@ -701,6 +886,9 @@ function Study({ deckId, onDone, onError }: {
         <h2 className="text-2xl font-extrabold mt-2 tracking-tight">
           {(allDue?.length ?? 0) === 0 ? "All caught up 🎉" : "How many today?"}
         </h2>
+        {title && (allDue?.length ?? 0) > 0 && (
+          <p className="text-xs font-bold uppercase tracking-widest text-stone-400 mt-1">{title}</p>
+        )}
         {(allDue?.length ?? 0) > 0 && (
           <>
             <p className="text-stone-500 text-sm mt-1">Pick a session size — you can always continue after.</p>
@@ -762,7 +950,7 @@ function Study({ deckId, onDone, onError }: {
           <span className="font-semibold">
             {viewing != null ? `Reviewing ${viewing + 1}/${history.length}` : `${done + 1} / ${queue.length}`}
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-white/10 text-xs font-semibold">{shown.deck_name}</span>
+          <span className="px-2 py-0.5 rounded-full bg-stone-100 dark:bg-white/10 text-xs font-semibold">{title ?? shown.deck_name}</span>
           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${shown.side === "reverse" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" : "bg-stone-100 text-stone-500 dark:bg-white/10"}`}>
             {shown.side === "reverse" ? "⇄ Reverse" : "→ Forward"}
           </span>
