@@ -705,16 +705,19 @@ function Study({ deckIds, title, onDone, onError }: {
   const [allDue, setAllDue] = useState<StudyItem[] | null>(null);
   const [queue, setQueue] = useState<StudyItem[]>([]);
   const [started, setStarted] = useState(false);
+  const [direction, setDirection] = useState<"forward" | "reverse" | "mixed">("forward");
   const [idx, setIdx] = useState(0);
   const [show, setShow] = useState(false);
   const [done, setDone] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    api.queue(undefined, 1000, deckIds?.length ? deckIds : undefined).then((q) => {
+    setLoaded(false);
+    api.queue(undefined, 1000, deckIds?.length ? deckIds : undefined, direction).then((q) => {
       setAllDue(q); setLoaded(true);
     }).catch((e) => { onError(e.message); setLoaded(true); });
-  }, [deckIds?.join(","), onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deckIds?.join(","), direction]);
 
   const start = (n: number) => {
     if (!allDue) return;
@@ -891,8 +894,37 @@ function Study({ deckIds, title, onDone, onError }: {
         )}
         {(allDue?.length ?? 0) > 0 && (
           <>
-            <p className="text-stone-500 text-sm mt-1">Pick a session size — you can always continue after.</p>
-            <div className="flex flex-wrap justify-center gap-2 mt-5">
+            <p className="text-stone-500 text-sm mt-1">Pick a direction and a session size — you can always continue after.</p>
+            <div className="flex justify-center gap-1.5 mt-4 p-1 rounded-2xl bg-stone-100 dark:bg-white/10 w-fit mx-auto" role="tablist" aria-label="Direction">
+              {(
+                [
+                  ["forward", "→ Forward", "Front → back"],
+                  ["mixed", "⇄ Mixed", "Random side per card"],
+                  ["reverse", "← Reverse", "Back → front"],
+                ] as const
+              ).map(([d, label, hint]) => (
+                <button
+                  key={d}
+                  role="tab"
+                  aria-selected={direction === d}
+                  title={hint}
+                  onClick={() => setDirection(d)}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                    direction === d
+                      ? "bg-white dark:bg-stone-900 shadow text-stone-900 dark:text-white"
+                      : "text-stone-500 hover:text-stone-900 dark:hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-stone-400 mt-2">
+              {direction === "forward" && "Classic: question → answer."}
+              {direction === "mixed" && "Each card randomly flips — recall both ways."}
+              {direction === "reverse" && "Hard mode: answer → question. Production, not recognition."}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
               {[10, 25, 50, 100, 200]
                 .filter((n) => n < allDue!.length)
                 .map((n) => (

@@ -13,6 +13,7 @@ A minimal Anki-like webapp for fast card entry and calm study sessions.
 - 📚 **Decks + cards** — create decks, add front/back cards, optional **reversed (⇄)** study both ways
 - 🗂️ **Categories** — nest lists inside categories (e.g. *Français → Verbes*); study a whole category or tick any combination of lists via checkboxes; move lists between categories, rollup due counts included
 - 🧠 **SM-2 reviews** — Again / Hard / Good / Easy with interval previews (`10m · 1d · 6d…`)
+- 🔀 **Direction modes** — study Forward (front→back), Reverse (back→front, recall not recognition), or Mixed (random side per card)
 - ⚡ **Rapid entry** — `Enter` saves & next, `⇧↵` newline, `N` focuses form, `/` searches, `Esc` cancels, sticky ⇄ toggle, autofocus-everything
 - 🔍 **Deck search** — filter cards instantly, due/new badges per card
 - 📊 **Study sessions** — flip card, progress bar, forward/reverse badges, keyboard (`Space`, `1–4`), completion summary

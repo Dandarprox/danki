@@ -28,6 +28,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+export type Direction = "forward" | "reverse" | "mixed";
+
 export const api = {
   overview: () => req<{ total: number; decks: number; due: number; streak: number }>("/api/stats/overview"),
   decks: () => req<Deck[]>("/api/decks"),
@@ -48,9 +50,10 @@ export const api = {
       body: JSON.stringify({ front, back, is_reversed }),
     }),
   deleteCard: (id: string) => req(`/api/cards/${id}`, { method: "DELETE" }),
-  queue: (deckId?: string, limit = 50, deckIds?: string[]) =>
+
+  queue: (deckId?: string, limit = 50, deckIds?: string[], direction?: Direction) =>
     req<StudyItem[]>(
-      `/api/study/queue?${deckId ? `deckId=${deckId}&` : ""}${deckIds?.length ? `deckIds=${deckIds.join(",")}&` : ""}limit=${limit}`
+      `/api/study/queue?${deckId ? `deckId=${deckId}&` : ""}${deckIds?.length ? `deckIds=${deckIds.join(",")}&` : ""}${direction ? `direction=${direction}&` : ""}limit=${limit}`
     ),
   review: (cardId: string, side: string, grade: number) =>
     req(`/api/study/review`, {

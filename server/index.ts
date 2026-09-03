@@ -209,7 +209,7 @@ const server = Bun.serve({
         }
         const list = [...expanded];
         scope = `AND c.deck_id IN (${list.map(() => "?").join(",")})`;
-        params = [...list, now, limit];
+        params = [now, ...list, limit];
       }
       // new cards first, then most overdue
       const rows = db
@@ -218,12 +218,29 @@ const server = Bun.serve({
            WHERE c.due<=? ${scope} ORDER BY c.reps ASC, c.due ASC LIMIT ?`
         )
         .all(...params) as any[];
+      // direction: forward (front→back for every card), reverse
+      // (back→front for every card), mixed (one random side per card).
+      // Omitted = legacy: forward plus a reverse item for ⇄ cards.
+      const direction = url.searchParams.get("direction");
       // expand reversed cards into two study items
       const items: any[] = [];
       for (const c of rows) {
-        items.push({ ...c, side: "forward", q: c.front, a: c.back });
-        if (c.is_reversed)
+        if (direction === "forward") {
+          items.push({ ...c, side: "forward", q: c.front, a: c.back });
+        } else if (direction === "reverse") {
           items.push({ ...c, side: "reverse", q: c.back, a: c.front });
+        } else if (direction === "mixed") {
+          const rev = Math.random() < 0.5;
+          items.push(
+            rev
+              ? { ...c, side: "reverse", q: c.back, a: c.front }
+              : { ...c, side: "forward", q: c.front, a: c.back }
+          );
+        } else {
+          items.push({ ...c, side: "forward", q: c.front, a: c.back });
+          if (c.is_reversed)
+            items.push({ ...c, side: "reverse", q: c.back, a: c.front });
+        }
       }
       return json(items.slice(0, limit));
     }

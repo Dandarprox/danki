@@ -230,9 +230,23 @@ export default {
         ).bind(now, ...scopeParams, limit).all()
       ).results;
       const items: Record<string, unknown>[] = [];
+      const direction = url.searchParams.get("direction");
       for (const c of rows as ({ is_reversed: number; front: string; back: string } & Record<string, unknown>)[]) {
-        items.push({ ...c, side: "forward", q: c.front, a: c.back });
-        if (c.is_reversed) items.push({ ...c, side: "reverse", q: c.back, a: c.front });
+        if (direction === "forward") {
+          items.push({ ...c, side: "forward", q: c.front, a: c.back });
+        } else if (direction === "reverse") {
+          items.push({ ...c, side: "reverse", q: c.back, a: c.front });
+        } else if (direction === "mixed") {
+          const rev = Math.random() < 0.5;
+          items.push(
+            rev
+              ? { ...c, side: "reverse", q: c.back, a: c.front }
+              : { ...c, side: "forward", q: c.front, a: c.back }
+          );
+        } else {
+          items.push({ ...c, side: "forward", q: c.front, a: c.back });
+          if (c.is_reversed) items.push({ ...c, side: "reverse", q: c.back, a: c.front });
+        }
       }
       return json(items.slice(0, limit));
     }
