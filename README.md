@@ -93,6 +93,25 @@ docs/superpowers/specs/  # design spec
 
 API: `GET/POST /api/decks`, `GET/PATCH/DELETE /api/decks/:id`, `GET/POST /api/decks/:id/cards`, `PATCH/DELETE /api/cards/:id`, `GET /api/study/queue`, `POST /api/study/review`, `GET /api/stats/overview`, `GET /api/health`.
 
+## 🌐 Share it publicly (free, via Cloudflare Tunnel)
+
+The backend needs Bun + a writable SQLite file, so it can't run on Pages/Workers
+as-is — instead, expose your local server through Cloudflare's free tunnel
+(no account needed, HTTPS included):
+
+```bash
+brew install cloudflared
+bun run build && bun start          # serve API + client on :3000
+cloudflared tunnel --url http://localhost:3000
+# → https://<random>.trycloudflare.com
+```
+
+Anyone with the URL gets the full app. Caveats: the URL is temporary (it dies
+with the `cloudflared` process and changes on restart) and your machine must
+stay on. For an always-on setup with a stable name, create a free Cloudflare
+account and switch to a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/),
+or migrate the backend to Workers + D1.
+
 ## 🛣️ Roadmap
 
 - [ ] CSV / Anki `.apkg` import-export
