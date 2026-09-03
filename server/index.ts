@@ -129,7 +129,7 @@ const server = Bun.serve({
 
     if (pathname === "/api/study/queue" && req.method === "GET") {
       const deckId = url.searchParams.get("deckId");
-      const limit = Math.min(100, Number(url.searchParams.get("limit") ?? 50));
+      const limit = Math.min(1000, Number(url.searchParams.get("limit") ?? 50));
       const now = nowSec();
       const where = deckId ? "WHERE c.deck_id=?" : "";
       const params: any[] = deckId ? [deckId, now, limit] : [now, limit];

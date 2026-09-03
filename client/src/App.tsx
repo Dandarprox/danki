@@ -516,17 +516,32 @@ function DeckDetail({ id, onBack, onStudy, onError }: {
 function Study({ deckId, onDone, onError }: {
   deckId?: string; onDone: () => void; onError: (m: string) => void;
 }) {
+  const [allDue, setAllDue] = useState<StudyItem[] | null>(null);
   const [queue, setQueue] = useState<StudyItem[]>([]);
+  const [started, setStarted] = useState(false);
   const [idx, setIdx] = useState(0);
   const [show, setShow] = useState(false);
   const [done, setDone] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    api.queue(deckId).then((q) => {
-      setQueue(q); setLoaded(true);
+    api.queue(deckId, 1000).then((q) => {
+      setAllDue(q); setLoaded(true);
     }).catch((e) => { onError(e.message); setLoaded(true); });
   }, [deckId, onError]);
+
+  const start = (n: number) => {
+    if (!allDue) return;
+    setQueue(allDue.slice(0, n));
+    setIdx(0); setDone(0); setShow(false);
+    setStarted(true);
+  };
+  const remaining = allDue ? allDue.length - queue.length : 0;
+  const more = () => {
+    if (!allDue) return;
+    const batch = allDue.slice(queue.length, queue.length + Math.max(queue.length, 25));
+    setQueue((q) => [...q, ...batch]);
+  };
 
   const cur = queue[idx];
   const pv = useMemo(() => (cur ? previews(cur) : null), [cur]);
@@ -572,7 +587,44 @@ function Study({ deckId, onDone, onError }: {
       </div>
     </div>
   );
-  if (!cur)
+  if (!started)
+    return (
+      <div className="card-paper rounded-3xl p-8 text-center animate-fade-up">
+        <button onClick={onDone} className="block text-sm text-stone-400 hover:text-stone-700 dark:hover:text-stone-200">← Back</button>
+        <p className="text-xs uppercase tracking-[0.2em] text-stone-400 font-semibold mt-2">
+          {(allDue?.length ?? 0) === 0 ? "Nothing due" : `${allDue!.length} due`}
+        </p>
+        <h2 className="text-2xl font-extrabold mt-2 tracking-tight">
+          {(allDue?.length ?? 0) === 0 ? "All caught up 🎉" : "How many today?"}
+        </h2>
+        {(allDue?.length ?? 0) > 0 && (
+          <>
+            <p className="text-stone-500 text-sm mt-1">Pick a session size — you can always continue after.</p>
+            <div className="flex flex-wrap justify-center gap-2 mt-5">
+              {[10, 25, 50, 100, 200]
+                .filter((n) => n < allDue!.length)
+                .map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => start(n)}
+                    className="px-5 py-2.5 rounded-2xl border border-stone-200 dark:border-white/15 font-bold hover:bg-stone-900 hover:text-white dark:hover:bg-white dark:hover:text-stone-900 transition-colors"
+                  >
+                    {n}
+                  </button>
+                ))}
+              <button
+                onClick={() => start(allDue!.length)}
+                className="px-5 py-2.5 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-bold hover:opacity-90"
+              >
+                All {allDue!.length} →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  if (!cur) {
+    const nextBatch = Math.min(remaining, Math.max(queue.length, 25));
     return (
       <div className="card-paper rounded-3xl p-10 text-center animate-fade-up">
         <div className="text-5xl">🎉</div>
@@ -582,13 +634,19 @@ function Study({ deckId, onDone, onError }: {
           <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">+{done} reviews</span>
           <span className="px-2.5 py-1 rounded-full bg-stone-100 dark:bg-white/10">🔥 streak updated</span>
         </div>
-        <div>
-          <button onClick={onDone} className="mt-5 px-6 py-3 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold hover:opacity-90">
+        <div className="mt-5 flex justify-center gap-2 flex-wrap">
+          {remaining > 0 && (
+            <button onClick={more} className="px-6 py-3 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold hover:opacity-90">
+              Continue +{nextBatch} ({remaining} left) →
+            </button>
+          )}
+          <button onClick={onDone} className="px-6 py-3 rounded-2xl border border-stone-200 dark:border-white/15 font-semibold hover:bg-stone-50 dark:hover:bg-white/5">
             Back to decks
           </button>
         </div>
       </div>
     );
+  }
 
   const pct = Math.round((done / Math.max(1, queue.length)) * 100);
 

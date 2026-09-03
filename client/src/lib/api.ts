@@ -35,8 +35,8 @@ export const api = {
       body: JSON.stringify({ front, back, is_reversed }),
     }),
   deleteCard: (id: string) => req(`/api/cards/${id}`, { method: "DELETE" }),
-  queue: (deckId?: string) =>
-    req<StudyItem[]>(`/api/study/queue?${deckId ? `deckId=${deckId}&` : ""}limit=50`),
+  queue: (deckId?: string, limit = 50) =>
+    req<StudyItem[]>(`/api/study/queue?${deckId ? `deckId=${deckId}&` : ""}limit=${limit}`),
   review: (cardId: string, side: string, grade: number) =>
     req(`/api/study/review`, {
       method: "POST",
