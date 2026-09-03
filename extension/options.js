@@ -64,6 +64,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("defaultDeck").dataset.keep = s.defaultDeck;
   await loadDecks(true);
 
+  $("eye").onclick = () => {
+    const t = $("token");
+    const show = t.type === "password";
+    t.type = show ? "text" : "password";
+    $("eye").textContent = show ? "🙈" : "👁️";
+  };
+
   $("save").onclick = async () => {
     await chrome.storage.sync.set({
       apiBase: $("apiBase").value.trim().replace(/\/$/, "") || DEFAULTS.apiBase,

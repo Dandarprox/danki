@@ -4,54 +4,143 @@
 <meta charset="utf-8" />
 <title>Danki Clipper — settings</title>
 <style>
-  body { max-width: 520px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; }
-  h1 { font-size: 20px; display: flex; align-items: center; gap: 10px; }
-  h1 .logo { width: 28px; height: 28px; border-radius: 8px; background: #1c1917; color: #fff;
-    display: inline-grid; place-items: center; font-size: 16px; }
-  label { display: block; font-weight: 700; margin: 14px 0 4px; }
-  small { display: block; opacity: .6; font-weight: 400; }
-  input[type="text"], input[type="password"], select {
-    width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 14px;
-    border: 1px solid #d6d3d1; border-radius: 10px; background: transparent; color: inherit;
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #FAF7F2; color: #1c1917;
+    display: flex; justify-content: center; padding: 40px 16px;
   }
-  .row { display: flex; gap: 8px; } .row > div { flex: 1; }
-  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-weight: 400; }
-  .actions { display: flex; gap: 8px; margin-top: 18px; }
-  button { padding: 10px 18px; border: 0; border-radius: 12px; font-weight: 700;
-    cursor: pointer; background: #1c1917; color: #fff; font-size: 14px; }
-  button.ghost { background: transparent; border: 1px solid #d6d3d1; color: inherit; }
-  #status { margin-top: 12px; font-size: 13px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0c0a09; color: #f5f5f4; }
+  }
+  .card {
+    width: 100%; max-width: 560px; height: max-content;
+    background: #fff; border: 1px solid rgba(0,0,0,.07); border-radius: 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.08); padding: 28px;
+  }
+  @media (prefers-color-scheme: dark) {
+    .card { background: #1c1917; border-color: rgba(255,255,255,.1); }
+  }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  header .logo {
+    width: 40px; height: 40px; border-radius: 12px; background: #1c1917; color: #fff;
+    display: inline-grid; place-items: center; font-size: 21px; font-weight: 800; flex-shrink: 0;
+  }
+  @media (prefers-color-scheme: dark) {
+    header .logo { background: #fff; color: #1c1917; }
+  }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: -.02em; }
+  header p { margin: 2px 0 0; font-size: 13px; opacity: .55; }
+  section { margin-top: 22px; }
+  section > h2 {
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em;
+    opacity: .45; margin: 0 0 10px;
+  }
+  label.field { display: block; font-weight: 600; font-size: 13px; margin: 12px 0 5px; }
+  label.field small { display: block; font-weight: 400; opacity: .55; font-size: 12px; }
+  input[type="text"], input[type="password"], select {
+    width: 100%; padding: 10px 12px; font-size: 14px; color: inherit;
+    border: 1.5px solid #e7e5e4; border-radius: 12px; background: transparent; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  @media (prefers-color-scheme: dark) {
+    input[type="text"], input[type="password"], select { border-color: rgba(255,255,255,.15); }
+  }
+  input:focus, select:focus { border-color: #1c1917; box-shadow: 0 0 0 3px rgba(28,25,23,.08); }
+  @media (prefers-color-scheme: dark) {
+    input:focus, select:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.12); }
+    select option, select optgroup { background: #1c1917; }
+  }
+  .token-wrap { position: relative; }
+  .token-wrap input { padding-right: 42px; font-family: ui-monospace, monospace; font-size: 13px; }
+  #eye {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    border: 0; background: transparent; font-size: 16px; cursor: pointer; padding: 6px; opacity: .55;
+  }
+  #eye:hover { opacity: 1; }
+  .row { display: flex; gap: 10px; } .row > div { flex: 1; }
+  .switch { display: flex; align-items: center; gap: 10px; margin-top: 14px; cursor: pointer; }
+  .switch input { width: 18px; height: 18px; accent-color: #1c1917; }
+  .switch span { font-size: 13px; }
+  @media (prefers-color-scheme: dark) {
+    .switch input { accent-color: #fff; }
+  }
+  .actions { display: flex; gap: 10px; margin-top: 24px; }
+  button.primary {
+    flex: 1; padding: 12px; border: 0; border-radius: 14px;
+    background: #1c1917; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  button.primary:hover { opacity: .9; }
+  @media (prefers-color-scheme: dark) {
+    button.primary { background: #fff; color: #1c1917; }
+  }
+  button.ghost {
+    padding: 12px 18px; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+    background: transparent; border: 1.5px solid #e7e5e4; color: inherit;
+  }
+  button.ghost:hover { background: rgba(0,0,0,.04); }
+  #status { margin-top: 14px; font-size: 13px; font-weight: 600; min-height: 20px; }
   #status.ok { color: #059669; } #status.err { color: #dc2626; }
+  footer { margin-top: 18px; font-size: 12px; opacity: .45; text-align: center; }
+  footer a { color: inherit; }
 </style>
 </head>
 <body>
-  <h1><span class="logo">団</span> Danki Clipper — settings</h1>
-  <label>Danki URL<small>Your deployed domain (or http://localhost:3000 for local dev).</small></label>
-  <input type="text" id="apiBase" />
+  <div class="card">
+    <header>
+      <span class="logo">団</span>
+      <div>
+        <h1>Danki Clipper</h1>
+        <p>Select words anywhere → save them as flashcards.</p>
+      </div>
+    </header>
 
-  <label>API token<small>Must match the worker's API_TOKEN secret. Stored only in this browser, never sent anywhere else.</small></label>
-  <input type="password" id="token" autocomplete="off" />
+    <section>
+      <h2>🔌 Connection</h2>
+      <label class="field" for="apiBase">Danki URL
+        <small>Your deployed domain — or http://localhost:3000 for local dev.</small>
+      </label>
+      <input type="text" id="apiBase" placeholder="https://danki.example.workers.dev" />
 
-  <label>Default list<small>Preselected in the popup. Leave empty for the first list.</small></label>
-  <select id="defaultDeck"><option value="">— first list —</option></select>
+      <label class="field" for="token">API token
+        <small>Must match the worker's API_TOKEN secret. Stored only in this browser.</small>
+      </label>
+      <div class="token-wrap">
+        <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="••••••••" />
+        <button id="eye" title="Show / hide token" type="button">👁️</button>
+      </div>
+    </section>
 
-  <div class="row">
-    <div>
-      <label>From language</label>
-      <select id="srcLang"></select>
+    <section>
+      <h2>📝 Card defaults</h2>
+      <label class="field" for="defaultDeck">Default list</label>
+      <select id="defaultDeck"><option value="">— first list —</option></select>
+
+      <div class="row">
+        <div>
+          <label class="field" for="srcLang">From</label>
+          <select id="srcLang"></select>
+        </div>
+        <div>
+          <label class="field" for="tgtLang">To</label>
+          <select id="tgtLang"></select>
+        </div>
+      </div>
+
+      <label class="switch"><input type="checkbox" id="autoTranslate" />
+        <span>Auto-translate the back side <small style="opacity:.55">(free MyMemory API)</small></span>
+      </label>
+    </section>
+
+    <div class="actions">
+      <button id="save" class="primary">Save settings</button>
+      <button id="test" class="ghost">Test connection</button>
     </div>
-    <div>
-      <label>To language</label>
-      <select id="tgtLang"></select>
-    </div>
+    <div id="status"></div>
+    <footer>Token never leaves this browser except to your Danki. <a href="https://github.com/Dandarprox/danki" target="_blank">danki ↗</a></footer>
   </div>
-  <label class="check"><input type="checkbox" id="autoTranslate" /> Auto-translate the back side (free MyMemory API)</label>
-
-  <div class="actions">
-    <button id="save">Save</button>
-    <button id="test" class="ghost">Test connection</button>
-  </div>
-  <div id="status"></div>
   <script src="options.js"></script>
 </body>
 </html>
