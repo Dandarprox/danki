@@ -35,10 +35,25 @@ body {
 .btn-grade-good { @apply bg-stone-900 text-white hover:bg-stone-800 active:scale-95 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-200; }
 .btn-grade-easy { @apply bg-emerald-50 text-emerald-700 hover:bg-emerald-100 active:scale-95 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20; }
 
-.flip-inner { transform-style: preserve-3d; transition: transform .45s cubic-bezier(.2,.7,.3,1.2); }
-.flipped { transform: rotateY(180deg); }
+.flip-inner {
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.3, 0.65, 0.3, 1);
+}
+.flipped { transform: rotateY(180deg) scale(1.015); }
 .flip-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
 .flip-back { transform: rotateY(180deg); }
+
+/* study card enter: slides in from the right with a whisper of rotation */
+@keyframes card-in {
+  from { opacity: 0; transform: translateX(56px) rotate(1.5deg) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) rotate(0) scale(1); }
+}
+.animate-card-in { animation: card-in 0.3s cubic-bezier(0.2, 0.7, 0.25, 1) both; }
+
+/* study card exit: graded cards glide out — left for Again/Hard, right for Good/Easy */
+.study-leaving { transition: transform 0.2s ease-in, opacity 0.2s ease-in !important; }
+.study-leaving-left { transform: translateX(-72px) rotate(-2.5deg) !important; opacity: 0; }
+.study-leaving-right { transform: translateX(72px) rotate(2.5deg) !important; opacity: 0; }
 
 /* mobile study gestures: touches starting on the card always grade, never scroll */
 .study-swipe { touch-action: none; }
@@ -72,5 +87,8 @@ button { touch-action: manipulation; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flip-inner, .animate-fade-up, .animate-toast { animation: none; transition: none; }
+  .flip-inner, .animate-fade-up, .animate-toast, .animate-card-in,
+  .study-leaving, .study-leaving-left, .study-leaving-right {
+    animation: none; transition: none;
+  }
 }

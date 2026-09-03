@@ -749,6 +749,10 @@ function Study({ deckIds, title, onDone, onError }: {
     } catch {}
   };
 
+  // Exit direction for the grade animation: Again/Hard glide left, Good/Easy right.
+  const [leaving, setLeaving] = useState<"left" | "right" | null>(null);
+  const exitFor = (g: number) => (g === 1 || g === 3 ? "left" : "right");
+
   const grade = async (g: number) => {
     if (!cur || busyRef.current) return;
     busyRef.current = true;
@@ -760,12 +764,14 @@ function Study({ deckIds, title, onDone, onError }: {
       onError(e.message);
     }
     setDone((d) => d + 1);
-    setShow(false);
-    // tiny delay for flip reset, then allow next grade
+    setLeaving(exitFor(g));
+    // let the exit glide play, then advance (next card slides in fresh)
     setTimeout(() => {
       setIdx((i) => i + 1);
+      setShow(false);
+      setLeaving(null);
       busyRef.current = false;
-    }, 120);
+    }, 200);
   };
 
   const goBack = () => {
@@ -791,11 +797,14 @@ function Study({ deckIds, title, onDone, onError }: {
       buzz();
     } catch (e: any) {
       onError(e.message);
-    } finally {
-      busyRef.current = false;
     }
-    setViewing(null);
-    setShow(false);
+    setLeaving(exitFor(g));
+    setTimeout(() => {
+      setViewing(null);
+      setShow(false);
+      setLeaving(null);
+      busyRef.current = false;
+    }, 200);
   };
 
   // Swipe mapping: hidden card → swipe right = instant Easy;
@@ -1021,11 +1030,14 @@ function Study({ deckIds, title, onDone, onError }: {
       </div>
 
       <div
-        className="[perspective:1200px] mt-4 relative select-none study-swipe"
+        key={shown ? `${shown.id}-${shown.side}` : "none"}
+        className={`[perspective:1200px] mt-4 relative select-none study-swipe animate-card-in ${
+          leaving ? `study-leaving study-leaving-${leaving}` : ""
+        }`}
         style={
           drag
             ? { transform: `translate(${drag.dx * 0.55}px, ${drag.dy * 0.35}px) rotate(${drag.dx * 0.04}deg)` }
-            : { transition: "transform .2s ease" }
+            : { transition: "transform .18s ease" }
         }
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
