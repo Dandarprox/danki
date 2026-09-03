@@ -92,6 +92,23 @@
     .lp-item.sel, .lp-item:hover { background: rgba(255,255,255,.1); }
   }
   .lp-empty { padding: 10px; font-size: 13px; opacity: .55; text-align: center; }
+  .lp-new { border-top: 1px solid rgba(128,128,128,.25); padding: 4px; }
+  .lp-newbtn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 9px;
+    border: 0; border-radius: 8px; background: transparent; color: #059669; font-size: 13px;
+    font-weight: 700; cursor: pointer; text-align: left; }
+  .lp-newbtn:hover { background: rgba(5,150,105,.1); }
+  .lp-form { padding: 8px; display: grid; gap: 6px; }
+  .lp-form input, .lp-form select {
+    width: 100%; padding: 7px 9px; font-size: 13px; color: inherit;
+    border: 1.5px solid #e7e5e4; border-radius: 9px; background: #fff; outline: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    .lp-form input, .lp-form select { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.16); }
+    .lp-form select option { background: #292524; }
+  }
+  .lp-form .row { display: flex; gap: 6px; margin: 0; }
+  .lp-form .row button { flex: 1; padding: 7px; font-size: 13px; }
+  .lp-err { font-size: 12px; color: #dc2626; }
 </style>
 </head>
 <body>

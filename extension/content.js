@@ -120,6 +120,28 @@
       .lp-item.sel, .lp-item:hover { background: rgba(255,255,255,.1); }
     }
     .lp-empty { padding: 10px; font-size: 13px; opacity: .55; text-align: center; }
+    .lp-new { border-top: 1px solid rgba(128,128,128,.25); padding: 4px; }
+    .lp-newbtn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 9px;
+      border: 0; border-radius: 8px; background: transparent; color: #059669; font-size: 13px;
+      font-weight: 700; cursor: pointer; text-align: left; }
+    .lp-newbtn:hover { background: rgba(5,150,105,.1); }
+    .lp-form { padding: 8px; display: grid; gap: 6px; }
+    .lp-form input, .lp-form select {
+      width: 100%; padding: 7px 9px; font-size: 13px; color: #1c1917;
+      border: 1.5px solid #e7e5e4; border-radius: 9px; background: #fff; outline: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      .lp-form input, .lp-form select { background: rgba(255,255,255,.06); color: #f5f5f4; border-color: rgba(255,255,255,.16); }
+      .lp-form select option { background: #292524; }
+    }
+    .lp-form .row { display: flex; gap: 6px; margin: 0; }
+    .lp-form .row button { flex: 1; padding: 7px; border: 0; border-radius: 9px; font-size: 13px;
+      font-weight: 700; cursor: pointer; background: #1c1917; color: #FAF7F2; }
+    @media (prefers-color-scheme: dark) {
+      .lp-form .row button { background: #FAF7F2; color: #1c1917; }
+    }
+    .lp-form .row button.ghost { background: transparent; border: 1.5px solid #e7e5e4; color: inherit; flex: 0 0 auto; }
+    .lp-err { font-size: 12px; color: #dc2626; min-height: 0; }
   </style><div id="slot"></div>`;
   document.documentElement.appendChild(host);
   const slot = shadow.getElementById("slot");
@@ -206,14 +228,16 @@
     const optBtn = q("#dk-opt");
     if (optBtn) optBtn.onclick = () => chrome.runtime.sendMessage({ type: "openOptions" });
 
-    // Searchable list picker. Returns { get, set } for the selected deck id.
-    const buildPicker = (mount, groups, initialId) => {
+    // Searchable list picker with inline list creation.
+    // opts: { categories: [{id,name}], onCreate: async (name, parentId) => leaf }.
+    // Returns { get, set } for the selected deck id.
+    const buildPicker = (mount, groups, initialId, opts = {}) => {
       mount.innerHTML = "";
       const wrap = document.createElement("div");
       wrap.className = "lp";
       const flat = [];
       for (const [cat, ls] of groups) for (const l of ls) flat.push({ ...l, cat });
-      const state = { id: initialId && flat.some((l) => l.id === initialId) ? initialId : flat[0]?.id ?? "", open: false, hi: 0 };
+      const state = { id: initialId && flat.some((l) => l.id === initialId) ? initialId : flat[0]?.id ?? "", open: false, hi: 0, creating: false };
       const display = document.createElement("button");
       display.type = "button";
       display.className = "lp-display";
@@ -225,7 +249,9 @@
       search.setAttribute("aria-label", "Search lists");
       const list = document.createElement("div");
       list.className = "lp-list";
-      drop.append(search, list);
+      const foot = document.createElement("div");
+      foot.className = "lp-new";
+      drop.append(search, list, foot);
       wrap.append(display, drop);
       mount.append(wrap);
 
@@ -294,11 +320,107 @@
         all[state.hi]?.scrollIntoView({ block: "nearest" });
       };
       let items = [];
+      const renderFoot = () => {
+        foot.innerHTML = "";
+        if (!opts.onCreate) return;
+        if (!state.creating) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "lp-newbtn";
+          b.textContent = "＋ New list…";
+          b.onclick = (e) => {
+            e.stopPropagation();
+            state.creating = true;
+            renderFoot();
+            foot.querySelector("input")?.focus();
+          };
+          foot.append(b);
+          return;
+        }
+        const form = document.createElement("div");
+        form.className = "lp-form";
+        const nameInput = document.createElement("input");
+        nameInput.placeholder = "New list name…";
+        nameInput.setAttribute("aria-label", "New list name");
+        nameInput.maxLength = 80;
+        const catSel = document.createElement("select");
+        catSel.setAttribute("aria-label", "Category");
+        const top = document.createElement("option");
+        top.value = "";
+        top.textContent = "Top level";
+        catSel.append(top);
+        for (const c of opts.categories ?? []) {
+          const o = document.createElement("option");
+          o.value = c.id;
+          o.textContent = c.name;
+          catSel.append(o);
+        }
+        const row = document.createElement("div");
+        row.className = "row";
+        const go = document.createElement("button");
+        go.type = "button";
+        go.textContent = "Create";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "ghost";
+        cancel.textContent = "✕";
+        row.append(go, cancel);
+        const err = document.createElement("div");
+        err.className = "lp-err";
+        form.append(nameInput, catSel, row, err);
+        foot.append(form);
+        const stop = (e) => e.stopPropagation();
+        nameInput.addEventListener("click", stop);
+        catSel.addEventListener("click", stop);
+        nameInput.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            go.click();
+          } else if (e.key === "Escape") {
+            state.creating = false;
+            renderFoot();
+            search.focus();
+          }
+        });
+        cancel.onclick = (e) => {
+          e.stopPropagation();
+          state.creating = false;
+          renderFoot();
+          search.focus();
+        };
+        go.onclick = async (e) => {
+          e.stopPropagation();
+          const nm = nameInput.value.trim();
+          if (!nm) {
+            err.textContent = "Give it a name.";
+            return;
+          }
+          go.disabled = true;
+          try {
+            const leaf = await opts.onCreate(nm, catSel.value || null);
+            const catName =
+              (opts.categories ?? []).find((c) => c.id === leaf.parent_id)?.name ?? "Top level";
+            if (!groups.has(catName)) groups.set(catName, []);
+            groups.get(catName).push(leaf);
+            flat.push({ ...leaf, cat: catName });
+            state.id = leaf.id;
+            state.creating = false;
+            paint();
+            items = render();
+            renderFoot();
+          } catch (ex) {
+            err.textContent = ex.message;
+            go.disabled = false;
+          }
+        };
+      };
       const open = () => {
         state.open = true;
         drop.hidden = false;
         search.value = "";
         items = render();
+        renderFoot();
         search.focus();
       };
       const close = () => {
@@ -334,24 +456,34 @@
       return { get: () => state.id, set: (id) => { state.id = id; paint(); } };
     };
 
-    // lists, grouped by category
+    // lists, grouped by category (with inline creation)
+    const base = s.apiBase.replace(/\/$/, "");
+    const auth = s.token ? { "x-api-token": s.token } : {};
+    const createDeck = async (name, parentId) => {
+      const r = await bgFetch(base + "/api/decks", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...auth },
+        body: JSON.stringify({ name, parent_id: parentId }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "HTTP " + r.status);
+      const { id } = await r.json();
+      return { id, name, parent_id: parentId, due: 0, total: 0, isNew: 0 };
+    };
     let picker = null;
     try {
-      const r = await bgFetch(s.apiBase.replace(/\/$/, "") + "/api/decks", {
-        headers: s.token ? { "x-api-token": s.token } : {},
-      });
+      const r = await bgFetch(base + "/api/decks", { headers: auth });
       if (r.status === 401) throw new Error("bad token");
       const decks = await r.json();
       const byId = new Map(decks.map((d) => [d.id, d]));
       const leaves = decks.filter((d) => d.children === 0);
-      if (!leaves.length) throw new Error("no lists yet — create one in Danki first");
+      const categories = decks.filter((d) => d.children > 0).map((d) => ({ id: d.id, name: d.name }));
       const groups = new Map(); // category name -> leaves
       for (const l of leaves) {
         const cat = l.parent_id ? byId.get(l.parent_id)?.name ?? "Other" : "Top level";
         if (!groups.has(cat)) groups.set(cat, []);
         groups.get(cat).push(l);
       }
-      picker = buildPicker(q("#dk-deck"), groups, s.defaultDeck);
+      picker = buildPicker(q("#dk-deck"), groups, s.defaultDeck, { categories, onCreate: createDeck });
     } catch (e) {
       q("#dk-status").textContent = "Lists failed: " + e.message;
       q("#dk-status").className = "status err";

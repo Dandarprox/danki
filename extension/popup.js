@@ -45,12 +45,13 @@ async function currentTabSelection() {
   }
 }
 
-// Searchable list picker. Returns { get, set, reload } for the deck id.
-function buildPicker(mount, groups, initialId) {
+// Searchable list picker with inline list creation.
+// opts: { categories: [{id,name}], onCreate: async (name, parentId) => leaf }.
+function buildPicker(mount, groups, initialId, opts = {}) {
   mount.innerHTML = "";
   const flat = [];
   for (const [cat, ls] of groups) for (const l of ls) flat.push({ ...l, cat });
-  const state = { id: initialId && flat.some((l) => l.id === initialId) ? initialId : flat[0]?.id ?? "", open: false, hi: 0 };
+  const state = { id: initialId && flat.some((l) => l.id === initialId) ? initialId : flat[0]?.id ?? "", open: false, hi: 0, creating: false };
   const wrap = document.createElement("div");
   wrap.className = "lp";
   const display = document.createElement("button");
@@ -64,7 +65,9 @@ function buildPicker(mount, groups, initialId) {
   search.setAttribute("aria-label", "Search lists");
   const list = document.createElement("div");
   list.className = "lp-list";
-  drop.append(search, list);
+  const foot = document.createElement("div");
+  foot.className = "lp-new";
+  drop.append(search, list, foot);
   wrap.append(display, drop);
   mount.append(wrap);
 
@@ -129,11 +132,100 @@ function buildPicker(mount, groups, initialId) {
     state.hi = Math.max(0, items.findIndex((b) => b.dataset.id === state.id));
     highlight(items);
   };
+  const renderFoot = () => {
+    foot.innerHTML = "";
+    if (!opts.onCreate) return;
+    if (!state.creating) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "lp-newbtn";
+      b.textContent = "＋ New list…";
+      b.onclick = () => {
+        state.creating = true;
+        renderFoot();
+        foot.querySelector("input")?.focus();
+      };
+      foot.append(b);
+      return;
+    }
+    const form = document.createElement("div");
+    form.className = "lp-form";
+    const nameInput = document.createElement("input");
+    nameInput.placeholder = "New list name…";
+    nameInput.setAttribute("aria-label", "New list name");
+    nameInput.maxLength = 80;
+    const catSel = document.createElement("select");
+    catSel.setAttribute("aria-label", "Category");
+    const top = document.createElement("option");
+    top.value = "";
+    top.textContent = "Top level";
+    catSel.append(top);
+    for (const c of opts.categories ?? []) {
+      const o = document.createElement("option");
+      o.value = c.id;
+      o.textContent = c.name;
+      catSel.append(o);
+    }
+    const row = document.createElement("div");
+    row.className = "row";
+    const go = document.createElement("button");
+    go.type = "button";
+    go.textContent = "Create";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "ghost";
+    cancel.textContent = "✕";
+    row.append(go, cancel);
+    const err = document.createElement("div");
+    err.className = "lp-err";
+    form.append(nameInput, catSel, row, err);
+    foot.append(form);
+    nameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        go.click();
+      } else if (e.key === "Escape") {
+        state.creating = false;
+        renderFoot();
+        search.focus();
+      }
+    });
+    cancel.onclick = () => {
+      state.creating = false;
+      renderFoot();
+      search.focus();
+    };
+    go.onclick = async () => {
+      const nm = nameInput.value.trim();
+      if (!nm) {
+        err.textContent = "Give it a name.";
+        return;
+      }
+      go.disabled = true;
+      try {
+        const leaf = await opts.onCreate(nm, catSel.value || null);
+        const catName =
+          (opts.categories ?? []).find((c) => c.id === leaf.parent_id)?.name ?? "Top level";
+        if (!groups.has(catName)) groups.set(catName, []);
+        groups.get(catName).push(leaf);
+        flat.push({ ...leaf, cat: catName });
+        state.id = leaf.id;
+        state.creating = false;
+        paint();
+        render();
+        renderFoot();
+      } catch (ex) {
+        err.textContent = ex.message;
+        go.disabled = false;
+      }
+    };
+  };
   const open = () => {
     state.open = true;
     drop.hidden = false;
     search.value = "";
     render();
+    renderFoot();
     search.focus();
   };
   const close = () => {
@@ -164,7 +256,7 @@ function buildPicker(mount, groups, initialId) {
   return { get: () => state.id, set: (id) => { state.id = id; paint(); } };
 }
 
-async function loadDecks(s) {
+async function loadDecks(s, onCreate) {
   const mount = $("deck");
   mount.innerHTML = "";
   const r = await api("/api/decks", s);
@@ -173,14 +265,14 @@ async function loadDecks(s) {
   const decks = await r.json();
   const byId = new Map(decks.map((d) => [d.id, d]));
   const leaves = decks.filter((d) => d.children === 0);
-  if (!leaves.length) throw new Error("no lists yet — create one in Danki first");
+  const categories = decks.filter((d) => d.children > 0).map((d) => ({ id: d.id, name: d.name }));
   const groups = new Map();
   for (const l of leaves) {
     const cat = l.parent_id ? byId.get(l.parent_id)?.name ?? "Other" : "Top level";
     if (!groups.has(cat)) groups.set(cat, []);
     groups.get(cat).push(l);
   }
-  return buildPicker(mount, groups, s.defaultDeck);
+  return buildPicker(mount, groups, s.defaultDeck, { categories, onCreate });
 }
 
 async function translate(text, s) {
@@ -211,9 +303,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     chrome.tabs.create({ url: s.apiBase.replace(/\/$/, "") + "/" });
   };
 
+  const createDeck = async (name, parentId) => {
+    const r = await api("/api/decks", s, {
+      method: "POST",
+      body: JSON.stringify({ name, parent_id: parentId }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "HTTP " + r.status);
+    const { id } = await r.json();
+    return { id, name, parent_id: parentId, due: 0, total: 0, isNew: 0 };
+  };
   let picker = null;
   try {
-    picker = await loadDecks(s);
+    picker = await loadDecks(s, createDeck);
   } catch (e) {
     status("Lists failed: " + e.message, "err");
   }
@@ -236,7 +337,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("reload").onclick = async () => {
     status("");
     try {
-      picker = await loadDecks(s);
+      picker = await loadDecks(s, createDeck);
       status("Lists reloaded ✓", "ok");
     } catch (e) {
       status("Lists failed: " + e.message, "err");
