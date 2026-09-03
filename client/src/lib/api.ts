@@ -10,9 +10,14 @@ export interface StudyItem extends Card {
   side: "forward" | "reverse"; q: string; a: string; deck_name: string;
 }
 
+const API_TOKEN = (import.meta as any).env?.VITE_API_TOKEN as string | undefined;
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, {
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(API_TOKEN ? { "x-api-token": API_TOKEN } : {}),
+    },
     ...init,
   });
   if (!r.ok) {

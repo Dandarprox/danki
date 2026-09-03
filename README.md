@@ -93,11 +93,53 @@ docs/superpowers/specs/  # design spec
 
 API: `GET/POST /api/decks`, `GET/PATCH/DELETE /api/decks/:id`, `GET/POST /api/decks/:id/cards`, `PATCH/DELETE /api/cards/:id`, `GET /api/study/queue`, `POST /api/study/review`, `GET /api/stats/overview`, `GET /api/health`.
 
-## 🌐 Share it publicly (free, via Cloudflare Tunnel)
+## ☁️ Cloudflare hosting (free, always-on, no Mac needed)
 
-The backend needs Bun + a writable SQLite file, so it can't run on Pages/Workers
-as-is — instead, expose your local server through Cloudflare's free tunnel
-(no account needed, HTTPS included):
+Architecture: **one Worker** serves the API + the React build (Static Assets),
+data lives in **D1** (Cloudflare's SQLite — same SQL, same SM-2 code in
+`server/srs.ts`, shared verbatim). All within the free tier.
+
+```
+worker/api.ts      # Worker entry — same REST API as server/index.ts, via D1
+migrations/        # D1 schema (incl. regrade snapshot columns)
+seeds.sql          # generated starter decks — bun run seeds:sql
+wrangler.toml      # worker + assets + D1 binding
+```
+
+### Deploy steps (one-time, ~5 min)
+
+```bash
+# 1. log in (browser) and create the database
+node_modules/.bin/wrangler login
+node_modules/.bin/wrangler d1 create danki
+# → paste the returned database_id into wrangler.toml
+
+# 2. migrate + seed + protect (recommended: shared-secret auth)
+node_modules/.bin/wrangler d1 migrations apply danki --remote
+bun run seeds:sql
+node_modules/.bin/wrangler d1 execute danki --remote --file=seeds.sql
+node_modules/.bin/wrangler secret put API_TOKEN   # any random string
+
+# 3. build the frontend with the same token baked in, then deploy
+VITE_API_TOKEN=<same-string> bun run build
+node_modules/.bin/wrangler deploy
+# → https://danki.<your-subdomain>.workers.dev
+```
+
+How auth works: if `API_TOKEN` is set on the worker, every `/api/*` route
+(except health) requires the `x-api-token` header; the frontend sends it when
+built with `VITE_API_TOKEN`. Leave both unset for local/dev use. Shortcuts:
+
+```bash
+bun run cf:dev       # local worker + local D1 (no account needed)
+bun run cf:deploy    # build + deploy
+bun run cf:migrate   # remote migrations
+bun run cf:seed      # remote seeds
+bun run cf:secret    # set remote API_TOKEN
+bun run seeds:sql    # regenerate seeds.sql from server/seed-*.ts
+```
+
+### Cheaper alternative: share from this Mac (temporary)
 
 ```bash
 brew install cloudflared
@@ -106,11 +148,8 @@ cloudflared tunnel --url http://localhost:3000
 # → https://<random>.trycloudflare.com
 ```
 
-Anyone with the URL gets the full app. Caveats: the URL is temporary (it dies
-with the `cloudflared` process and changes on restart) and your machine must
-stay on. For an always-on setup with a stable name, create a free Cloudflare
-account and switch to a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/),
-or migrate the backend to Workers + D1.
+Free and instant, but the URL dies with the process and your machine must stay
+on. Good for demos, not for daily use.
 
 ## 🛣️ Roadmap
 
