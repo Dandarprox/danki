@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Danki Clipper — settings</title>
+<style>
+  body { max-width: 520px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 20px; display: flex; align-items: center; gap: 10px; }
+  h1 .logo { width: 28px; height: 28px; border-radius: 8px; background: #1c1917; color: #fff;
+    display: inline-grid; place-items: center; font-size: 16px; }
+  label { display: block; font-weight: 700; margin: 14px 0 4px; }
+  small { display: block; opacity: .6; font-weight: 400; }
+  input[type="text"], input[type="password"], select {
+    width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 14px;
+    border: 1px solid #d6d3d1; border-radius: 10px; background: transparent; color: inherit;
+  }
+  .row { display: flex; gap: 8px; } .row > div { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-weight: 400; }
+  .actions { display: flex; gap: 8px; margin-top: 18px; }
+  button { padding: 10px 18px; border: 0; border-radius: 12px; font-weight: 700;
+    cursor: pointer; background: #1c1917; color: #fff; font-size: 14px; }
+  button.ghost { background: transparent; border: 1px solid #d6d3d1; color: inherit; }
+  #status { margin-top: 12px; font-size: 13px; }
+  #status.ok { color: #059669; } #status.err { color: #dc2626; }
+</style>
+</head>
+<body>
+  <h1><span class="logo">団</span> Danki Clipper — settings</h1>
+  <label>Danki URL<small>Your deployed domain (or http://localhost:3000 for local dev).</small></label>
+  <input type="text" id="apiBase" />
+
+  <label>API token<small>Must match the worker's API_TOKEN secret. Stored only in this browser, never sent anywhere else.</small></label>
+  <input type="password" id="token" autocomplete="off" />
+
+  <label>Default list<small>Preselected in the popup. Leave empty for the first list.</small></label>
+  <select id="defaultDeck"><option value="">— first list —</option></select>
+
+  <div class="row">
+    <div>
+      <label>From language</label>
+      <select id="srcLang"></select>
+    </div>
+    <div>
+      <label>To language</label>
+      <select id="tgtLang"></select>
+    </div>
+  </div>
+  <label class="check"><input type="checkbox" id="autoTranslate" /> Auto-translate the back side (free MyMemory API)</label>
+
+  <div class="actions">
+    <button id="save">Save</button>
+    <button id="test" class="ghost">Test connection</button>
+  </div>
+  <div id="status"></div>
+  <script src="options.js"></script>
+</body>
+</html>

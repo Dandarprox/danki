@@ -18,6 +18,7 @@ A minimal Anki-like webapp for fast card entry and calm study sessions.
 - 📊 **Study sessions** — flip card, progress bar, forward/reverse badges, keyboard (`Space`, `1–4`), completion summary
 - 🔥 **Streak + due counts** — header pills, hero stats
 - 🌙 **Dark mode** — warm paper light + OLED-friendly dark, persisted + respects OS
+- 🧲 **Danki Clipper** — companion browser extension (`extension/`): select any word → right-click → auto-translated back → saved to production. See `extension/README.md`.
 - 🗄️ **SQLite** — single `data/danki.db` (WAL), zero-config, single user local
 
 ## 🚀 Quickstart

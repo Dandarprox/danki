@@ -1,5 +1,8 @@
 import { db, uid, nowSec } from "./db";
 
+// NOTE: superseded by server/catalog.ts (topic structure) — kept as source
+// material parsed by server/build-catalog.ts. Use server/seed-catalog.ts.
+
 // 100 basic German words (front) with Spanish meanings (back).
 // Nouns include their article (der/die/das) — essential in German.
 const WORDS: Array<[string, string]> = [

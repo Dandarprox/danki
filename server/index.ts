@@ -7,7 +7,12 @@ const CLIENT_DIST = new URL("../client/dist/", import.meta.url).pathname;
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "content-type, x-api-token",
+      "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    },
   });
 
 async function body<T>(req: Request): Promise<T> {
@@ -68,6 +73,7 @@ const server = Bun.serve({
     const { pathname } = url;
 
     // ---- API ----
+    if (req.method === "OPTIONS") return json({ ok: true });
     if (pathname === "/api/health") return json({ ok: true });
 
     if (pathname === "/api/stats/overview") {

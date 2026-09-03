@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: light dark; }
+  body { width: 320px; margin: 0; padding: 14px; font: 14px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  h1 .logo { width: 22px; height: 22px; border-radius: 7px; background: #1c1917; color: #fff;
+    display: inline-grid; place-items: center; font-size: 13px; }
+  label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; opacity: .55; margin: 10px 0 4px; }
+  input[type="text"], textarea, select {
+    width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 15px;
+    border: 1px solid #d6d3d1; border-radius: 10px; background: transparent; color: inherit;
+  }
+  textarea { resize: vertical; min-height: 44px; }
+  .row { display: flex; gap: 8px; margin-top: 12px; }
+  button { flex: 1; padding: 10px; border: 0; border-radius: 12px; font-size: 14px;
+    font-weight: 700; cursor: pointer; background: #1c1917; color: #fff; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.ghost { background: transparent; border: 1px solid #d6d3d1; color: inherit; flex: 0 0 auto; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 10px; }
+  #status { margin-top: 10px; font-size: 13px; min-height: 18px; }
+  #status.ok { color: #059669; } #status.err { color: #dc2626; }
+  #notoken { background: #fef3c7; color: #92400e; border-radius: 10px; padding: 8px 10px;
+    font-size: 13px; margin-bottom: 8px; }
+  #notoken a { color: inherit; font-weight: 700; }
+  .hint { font-size: 12px; opacity: .55; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <h1><span class="logo">団</span> Add to Danki</h1>
+  <div id="notoken" hidden>Set your API token first — <a href="options.html" target="_blank">open settings</a>.</div>
+  <label for="front">Front</label>
+  <textarea id="front" rows="2" placeholder="Selected word…"></textarea>
+  <label for="back">Back <span id="auto" style="font-weight:400;text-transform:none"></span></label>
+  <textarea id="back" rows="2" placeholder="Translation…"></textarea>
+  <label for="deck">List</label>
+  <div class="row" style="margin-top:0">
+    <select id="deck" style="flex:1"></select>
+    <button id="reload" class="ghost" title="Reload lists">↻</button>
+  </div>
+  <label class="check"><input type="checkbox" id="reversed" /> Study both directions ⇄</label>
+  <div class="row">
+    <button id="save">Save card ⏎</button>
+  </div>
+  <div id="status"></div>
+  <div class="hint"><a href="#" id="open">Open Danki ↗</a></div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -24,10 +24,16 @@ const startOfTodaySec = () => {
   return Math.floor(d.getTime() / 1000);
 };
 
-const json = (data: unknown, status = 200) =>
+const json = (data: unknown, status = 200, extra?: HeadersInit) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "content-type, x-api-token",
+      "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+      ...extra,
+    },
   });
 
 async function deckCounts(DB: D1, deckId: string) {
@@ -69,6 +75,10 @@ export default {
     const url = new URL(req.url);
     const { pathname } = url;
     const DB = env.DB;
+
+    // Browser extensions call cross-origin — answer preflights openly
+    // (actual auth still enforced below via x-api-token).
+    if (req.method === "OPTIONS") return json({ ok: true });
 
     // Optional shared-secret auth for public deployments.
     // Set API_TOKEN secret on the worker + VITE_API_TOKEN at build time.
