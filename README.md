@@ -46,6 +46,15 @@ Tests (SM-2 unit):
 bun test
 ```
 
+## 🌱 Starter decks
+
+```bash
+bun server/seed-german-spanish.ts   # Alemán básico — 100 DE→ES words
+bun server/seed-french-500.ts       # Francés básico-intermedio — 500 FR→ES words
+```
+
+Both are idempotent (they skip if the deck already exists).
+
 ## ⌨️ Shortcuts
 
 | Where | Keys |
