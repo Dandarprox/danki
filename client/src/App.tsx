@@ -640,19 +640,22 @@ function Study({ deckId, onDone, onError }: {
     if (Math.abs(d.dx) >= Math.abs(d.dy)) pick(d.dx > 0 ? 4 : 1);
     else pick(d.dy < 0 ? 5 : 3);
   };
-  const swipeLabel =
-    drag && Math.max(Math.abs(drag.dx), Math.abs(drag.dy)) > 30
-      ? viewing == null && !show
+  // Active swipe zone (color-coded like the grade buttons).
+  const hiddenMode = viewing == null && !show;
+  const dragOn = !!drag && Math.max(Math.abs(drag.dx), Math.abs(drag.dy)) > 12;
+  const activeZone =
+    dragOn && drag
+      ? hiddenMode
         ? drag.dx > 0 && Math.abs(drag.dx) >= Math.abs(drag.dy)
-          ? "Easy →"
+          ? "easy"
           : null
         : Math.abs(drag.dx) >= Math.abs(drag.dy)
           ? drag.dx > 0
-            ? "Good →"
-            : "← Again"
+            ? "good"
+            : "again"
           : drag.dy < 0
-            ? "Easy ↑"
-            : "Hard ↓"
+            ? "easy"
+            : "hard"
       : null;
 
   // keyboard: space flip, 1-4 grade, E = instant Easy,
@@ -808,11 +811,23 @@ function Study({ deckId, onDone, onError }: {
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        {swipeLabel && (
-          <div className="absolute inset-0 z-10 grid place-items-center pointer-events-none">
-            <span className="px-4 py-2 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-extrabold text-xl shadow-xl">
-              {swipeLabel}
-            </span>
+        {dragOn && (
+          <div className="absolute inset-0 z-10 pointer-events-none">
+            {!(viewing == null && !show) && (
+              <>
+                <SwipeZone id="again" active={activeZone} label="← Again" sub={pv?.again} pos="left-2 top-1/2 -translate-y-1/2" cls="bg-red-500 text-white" />
+                <SwipeZone id="good" active={activeZone} label="Good →" sub={pv?.good} pos="right-2 top-1/2 -translate-y-1/2" cls="bg-stone-900 text-white dark:bg-white dark:text-stone-900" />
+                <SwipeZone id="hard" active={activeZone} label="↓ Hard" sub={pv?.hard} pos="bottom-2 left-1/2 -translate-x-1/2" cls="bg-stone-400 text-white dark:bg-stone-500 dark:text-white" />
+              </>
+            )}
+            <SwipeZone
+              id="easy"
+              active={activeZone}
+              label={viewing == null && !show ? "Easy →" : "↑ Easy"}
+              sub={pv?.easy}
+              pos={viewing == null && !show ? "right-2 top-1/2 -translate-y-1/2" : "top-2 left-1/2 -translate-x-1/2"}
+              cls="bg-emerald-500 text-white"
+            />
           </div>
         )}
         <button
@@ -890,6 +905,23 @@ function Kbd({ children }: { children: React.ReactNode }) {
     <kbd className="px-1.5 py-0.5 rounded-md bg-stone-100 dark:bg-white/10 border border-stone-200 dark:border-white/10 font-sans font-semibold">
       {children}
     </kbd>
+  );
+}
+
+function SwipeZone({ id, active, label, sub, pos, cls }: {
+  id: string; active: string | null; label: string; sub?: string;
+  pos: string; cls: string;
+}) {
+  const on = active === id;
+  return (
+    <span
+      className={`absolute ${pos} px-3 py-1.5 rounded-2xl font-extrabold text-sm shadow-lg transition-all ${cls} ${
+        on ? "opacity-100 scale-110" : "opacity-35 scale-95"
+      }`}
+    >
+      {label}
+      {sub && <span className="font-normal opacity-80"> · {sub}</span>}
+    </span>
   );
 }
 
