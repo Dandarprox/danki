@@ -11,5 +11,5 @@ run_worker_first = ["/api/*"]
 binding = "DB"
 database_name = "danki"
 # Filled in by `wrangler d1 create danki` — see README "Cloudflare hosting".
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "ebf61c52-7968-42c3-b188-c96759e03120"
 migrations_dir = "migrations"
