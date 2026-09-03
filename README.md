@@ -52,7 +52,7 @@ bun test
 |---|---|
 | Add card | `Enter` save · `⇧↵` newline · `⌘/Ctrl+Enter` save · `N` focus form · `Esc` cancel |
 | Search cards | `/` focus |
-| Study | `Space` flip · `1` Again · `2` Hard · `3` Good · `4` Easy |
+| Study | `Space` flip · `1` Again · `2` Hard · `3` Good · `4` Easy · `E` instant Easy (no reveal — for cards you know cold) |
 
 ## 🧠 How scheduling works
 

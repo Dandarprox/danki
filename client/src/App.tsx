@@ -141,7 +141,7 @@ export default function App() {
       )}
 
       <footer className="max-w-3xl mx-auto px-5 pb-8 text-center text-xs text-stone-400 dark:text-stone-500">
-        danki · spaced repetition, minus the clutter · study: <Kbd>Space</Kbd> flip · <Kbd>1–4</Kbd> grade · add cards: <Kbd>Enter</Kbd> save
+        danki · spaced repetition, minus the clutter · study: <Kbd>Space</Kbd> flip · <Kbd>1–4</Kbd> grade · <Kbd>E</Kbd> instant Easy · add cards: <Kbd>Enter</Kbd> save
       </footer>
     </div>
   );
@@ -530,9 +530,11 @@ function Study({ deckId, onDone, onError }: {
 
   const cur = queue[idx];
   const pv = useMemo(() => (cur ? previews(cur) : null), [cur]);
+  const busyRef = useRef(false);
 
   const grade = async (g: number) => {
-    if (!cur) return;
+    if (!cur || busyRef.current) return;
+    busyRef.current = true;
     try {
       await api.review(cur.id, cur.side, g);
     } catch (e: any) {
@@ -540,15 +542,19 @@ function Study({ deckId, onDone, onError }: {
     }
     setDone((d) => d + 1);
     setShow(false);
-    // tiny delay for flip reset
-    setTimeout(() => setIdx((i) => i + 1), 120);
+    // tiny delay for flip reset, then allow next grade
+    setTimeout(() => {
+      setIdx((i) => i + 1);
+      busyRef.current = false;
+    }, 120);
   };
 
-  // keyboard: space flip, 1-4 grade
+  // keyboard: space flip, 1-4 grade, E = instant Easy (no reveal needed)
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (!cur) return;
       if (e.code === "Space") { e.preventDefault(); setShow((s) => !s); }
+      if (!show && (e.key === "e" || e.key === "E")) { grade(5); return; }
       if (show && e.key === "1") grade(1);
       if (show && e.key === "2") grade(3);
       if (show && e.key === "3") grade(4);
@@ -627,12 +633,21 @@ function Study({ deckId, onDone, onError }: {
       </div>
 
       {!show ? (
-        <button
-          onClick={() => setShow(true)}
-          className="w-full mt-4 py-4 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold text-lg"
-        >
-          Show answer <span className="opacity-50 text-sm font-normal">(Space)</span>
-        </button>
+        <div>
+          <button
+            onClick={() => setShow(true)}
+            className="w-full mt-4 py-4 rounded-2xl bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold text-lg"
+          >
+            Show answer <span className="opacity-50 text-sm font-normal">(Space)</span>
+          </button>
+          <button
+            onClick={() => grade(5)}
+            className="w-full mt-2 py-2.5 rounded-2xl text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+            title="You know it cold — mark Easy without revealing"
+          >
+            Know it cold? Easy → <Kbd>E</Kbd>
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-4 gap-2 mt-4">
           <GradeBtn label="Again" sub={pv!.again} kbd="1" cls="btn-grade-again" onClick={() => grade(1)} />
